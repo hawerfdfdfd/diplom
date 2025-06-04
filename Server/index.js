@@ -29,8 +29,10 @@ app.get("/employees", (req, res) => {
       e.salary,
       e.department_id,
       d.department_name,
-    COALESCE(td.hours_remaining, 135)  AS hours_remaining,
-     COALESCE(td.hours_used, 0)         AS hours_used,
+      -- Если найдётся запись в time_deductions → берём td.hours_remaining,
+      -- иначе берём ws.working_hours (а не «135»).
+      COALESCE(td.hours_remaining, ws.working_hours) AS hours_remaining,
+      COALESCE(td.hours_used, 0) AS hours_used,
       ws.shift_type
     FROM employees e
     LEFT JOIN departments d
@@ -63,8 +65,8 @@ app.get("/employees/:id", (req, res) => {
       e.salary,
       e.department_id,
       d.department_name,
-     COALESCE(td.hours_remaining, 135)  AS hours_remaining,
-     COALESCE(td.hours_used, 0)         AS hours_used,
+      COALESCE(td.hours_remaining, ws.working_hours) AS hours_remaining,
+      COALESCE(td.hours_used, 0) AS hours_used,
       ws.shift_type
     FROM employees e
     LEFT JOIN departments d

@@ -146,6 +146,10 @@ export default function Dashboard() {
   const handleNewSubmit = (e) => {
     e.preventDefault();
 
+    const wh = newEmployee.working_hours
+      ? Number(newEmployee.working_hours)
+      : null;
+
     Axios.post("http://localhost:3002/employees", newEmployee)
       .then(({ data }) => {
         // data должен содержать { employee_id: <новый ID>, … }
@@ -176,7 +180,7 @@ export default function Dashboard() {
               qualification: "",
               salary: "",
               department_name: "",
-              working_hours: "",
+              working_hours: wh,
               shift_type: "",
             });
 
