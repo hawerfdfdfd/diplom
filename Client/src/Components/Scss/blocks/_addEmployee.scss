@@ -1,0 +1,323 @@
+/* ==============================================================
+   addEmployees.scss — адаптивный, центрированный дизайн 
+   слайда «Добавить сотрудника».
+   ============================================================== */
+
+/* ------------------------------ 
+   Переменные 
+   ------------------------------ */
+$white: #ffffff;
+$white-opaque: rgba(255, 255, 255, 0.08);
+$white-border: rgba(255, 255, 255, 0.4);
+$header-bg: rgba(0, 0, 0, 0.6);
+$btn-green: #4caf50;
+$btn-green-hover: #388e3c;
+
+/* Точки перелома */
+$breakpoint-mobile: 480px;
+$breakpoint-tablet: 768px;
+
+/* ------------------------------
+   1. Общие стили контейнера (фон «звёзд») 
+   ------------------------------ */
+.dashboard-container {
+  position: relative;
+  min-height: 100vh;
+  /* Замените путь на действительный, где лежит ваша анимация/фон со звёздами */
+  background: url("/path/to/animated-stars.gif") no-repeat center/cover;
+  overflow: hidden;
+}
+
+/* Слои-слайды (не имеют собственной заливки) */
+.slides {
+  transition: transform 0.5s ease;
+}
+.slide {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ------------------------------
+   2. Слайд «Добавить сотрудника» 
+   ------------------------------ */
+.screen-add-emp {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: transparent; /* чтобы фон «звёзд» просвечивал */
+}
+
+/* ------------------------------------------------------------
+   2.1 Заголовок слайда + hide-on-scroll 
+   ------------------------------------------------------------ */
+.header-add-emp {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  z-index: 10;
+
+  /* По умолчанию заголовок виден */
+  transform: translateY(0);
+  opacity: 1;
+
+  /* Когда у хедера добавлен класс .scrolled, он уезжает вверх */
+  &.scrolled {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+
+  @media (max-width: $breakpoint-mobile) {
+    padding: 10px 12px;
+  }
+}
+
+.header-add-emp h2 {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  margin: 0;
+  color: $white;
+  white-space: nowrap;
+}
+
+.btn-back-desktop,
+.logout-icon-desktop {
+  cursor: pointer;
+  color: $white;
+  transition: color 0.2s;
+
+  &:hover {
+    color: lighten($white, 20%);
+  }
+
+  @media (max-width: $breakpoint-mobile) {
+    font-size: 18px;
+  }
+}
+
+/* ------------------------------------------------------------
+   2.2 «Обёртка» формы, в которой прокручивается содержимое
+   ------------------------------------------------------------ */
+.form-wrapper {
+  flex: 1;
+  overflow-y: auto;
+
+  /* Горизонтальное центрирование, но вертикально — от верхнего края */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* Раньше было center */
+
+  /* Чтобы форма не прилипала сверху по шапке, добавим отступ сверху примерно равный высоте заголовка (48px) */
+  padding: 48px 16px 40px 16px; /* верхний = 48px, нижний = 40px, боковые = 16px */
+
+  background: transparent;
+
+  @media (max-width: $breakpoint-mobile) {
+    padding: 48px 12px 32px 12px; /* аналогично, но боковые чуть меньше */
+  }
+}
+
+/* ------------------------------------------------------------
+   2.3 Карточка формы («листок») 
+   ------------------------------------------------------------ */
+.add-employee-form {
+  background: $white-opaque;
+  border: 1px solid $white-border;
+  border-radius: 8px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  box-sizing: border-box;
+  color: $white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+
+  /* Добавим небольшой нижний margin, чтобы карточка НЕ прилипала к низу
+     при минимальном контенте */
+  margin-bottom: 16px;
+
+  @media (max-width: $breakpoint-tablet) {
+    max-width: 90%;
+    padding: 20px;
+    border-radius: 6px;
+  }
+
+  @media (max-width: $breakpoint-mobile) {
+    max-width: 100%;
+    padding: 16px;
+    border-radius: 4px;
+  }
+}
+
+/* ------------------------------------------------------------
+   2.4 Поля и лейблы внутри формы 
+   ------------------------------------------------------------ */
+.add-employee-form .form-group {
+  margin-bottom: 16px;
+
+  @media (max-width: $breakpoint-mobile) {
+    margin-bottom: 12px;
+  }
+}
+
+.add-employee-form .form-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: $white;
+
+  @media (max-width: $breakpoint-mobile) {
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+}
+
+.add-employee-form .form-group input {
+  width: 100%;
+  box-sizing: border-box; /* ВАЖНО, чтобы padding и бордер учитывались в общей ширине */
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid $white-border;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: $white;
+  transition: border-color 0.2s, background 0.2s;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  &:focus {
+    border-color: #4caf50;
+    outline: none;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+  }
+
+  @media (max-width: $breakpoint-mobile) {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
+
+/* ------------------------------------------------------------
+   2.5 Кнопка «Создать» 
+   ------------------------------------------------------------ */
+.add-employee-form .form-actions {
+  display: flex;
+  justify-content: center; /* Вместо flex-end — центрируем */
+  margin-top: 24px;
+
+  @media (max-width: $breakpoint-mobile) {
+    margin-top: 16px;
+  }
+}
+
+.add-employee-form .form-actions button {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: $btn-green;
+  color: $white;
+  transition: background-color 0.2s, transform 0.1s;
+
+  @media (max-width: $breakpoint-mobile) {
+    padding: 8px 20px;
+    font-size: 13px;
+  }
+
+  &:hover {
+    background: $btn-green-hover;
+    transform: translateY(-1px);
+  }
+}
+
+/* ------------------------------------------------------------
+   2.6 Иконки «Добавить/Почта/Выйти» в списке сотрудников 
+   ------------------------------------------------------------ */
+.add-icon-desktop,
+.btn-mail-desktop,
+.logout-icon-desktop {
+  cursor: pointer;
+  color: $white;
+  transition: color 0.2s;
+
+  &:hover {
+    color: lighten($white, 20%);
+  }
+
+  @media (max-width: $breakpoint-mobile) {
+    font-size: 18px;
+  }
+}
+
+.add-icon-mobile,
+.btn-mail-mobile,
+.logout-icon-mobile {
+  cursor: pointer;
+  color: $white;
+  transition: color 0.2s;
+
+  @media (max-width: $breakpoint-mobile) {
+    font-size: 18px;
+  }
+
+  &:hover {
+    color: lighten($white, 20%);
+  }
+}
+
+/* ------------------------------------------------------------
+   2.7 Стиль скроллбара внутри .form-wrapper 
+   ------------------------------------------------------------ */
+.form-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.form-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.form-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.form-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Уведомление об успешном создании */
+.success-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(76, 175, 80, 0.9); /* тёмно-зелёный полупрозрачный фон */
+  color: #ffffff;
+  padding: 10px 24px;
+  border-radius: 4px;
+  font-size: 14px;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+}
+
+/* На небольших разрешениях чуть ужмём размер и отступ */
+@media (max-width: 480px) {
+  .success-banner {
+    top: 12px;
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+}

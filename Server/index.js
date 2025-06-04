@@ -12,12 +12,12 @@ const db = mysql.createConnection({
   host: "localhost",
   password: "",
   database: "store",
+  multipleStatements: true,
 });
 
-// Обновленный GET /employees с JOIN
 app.get("/employees", (req, res) => {
-  const SQL = `
-    SELECT 
+  const sql = `
+    SELECT
       e.employee_id,
       e.first_name,
       e.last_name,
@@ -29,48 +29,59 @@ app.get("/employees", (req, res) => {
       e.salary,
       e.department_id,
       d.department_name,
-      ws.working_hours,
+    COALESCE(td.hours_remaining, 135)  AS hours_remaining,
+     COALESCE(td.hours_used, 0)         AS hours_used,
       ws.shift_type
     FROM employees e
-    LEFT JOIN departments d 
+    LEFT JOIN departments d
       ON e.department_id = d.department_id
-    LEFT JOIN workschedules ws 
+    LEFT JOIN workschedules ws
       ON e.employee_id = ws.employee_id
+    LEFT JOIN time_deductions td
+      ON e.employee_id = td.employee_id
+     AND td.time_year_month = DATE_FORMAT(CURDATE(), '%Y-%m')
+    ORDER BY e.employee_id;
   `;
-
-  db.query(SQL, (err, results) => {
-    if (err) {
-      console.error("Ошибка получения сотрудников:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json({ error: err });
     res.json(results);
   });
 });
 
-// app.put("/employees/:id", (req, res) => {
-//   const employeeId = req.params.id;
-//   const updateData = req.body; // обновляемые данные из запроса
-
-//   // запрос к базе данных для обновления сотрудника.
-//   const SQL =
-//     "UPDATE employees SET vacationStartDate = ?, vacationEndDate = ?, vacationType = ?, scheduleHours = ?, scheduleShiftType = ? WHERE employee_id = ?";
-//   const values = [
-//     updateData.vacationStartDate,
-//     updateData.vacationEndDate,
-//     updateData.vacationType,
-//     updateData.scheduleHours,
-//     updateData.scheduleShiftType,
-//     employeeId,
-//   ];
-
-//   db.query(SQL, values, (err, result) => {
-//     if (err) {
-//       console.error("Ошибка при обновлении данных:", err);
-//       return res.status(500).json({ error: "Ошибка при обновлении данных" });
-//     }
-//     res.json({ message: "Данные обновлены", data: updateData });
-//   });
-// });
+app.get("/employees/:id", (req, res) => {
+  const empId = req.params.id;
+  const sql = `
+    SELECT
+      e.employee_id,
+      e.first_name,
+      e.last_name,
+      e.email,
+      e.phone_number,
+      e.hire_date,
+      e.job_title,
+      e.qualification,
+      e.salary,
+      e.department_id,
+      d.department_name,
+     COALESCE(td.hours_remaining, 135)  AS hours_remaining,
+     COALESCE(td.hours_used, 0)         AS hours_used,
+      ws.shift_type
+    FROM employees e
+    LEFT JOIN departments d
+      ON e.department_id = d.department_id
+    LEFT JOIN workschedules ws
+      ON e.employee_id = ws.employee_id
+    LEFT JOIN time_deductions td
+      ON e.employee_id = td.employee_id
+     AND td.time_year_month = DATE_FORMAT(CURDATE(), '%Y-%m')
+    WHERE e.employee_id = ?
+  `;
+  db.query(sql, [empId], (err, results) => {
+    if (err) return res.status(500).json({ error: err });
+    if (!results.length) return res.status(404).json({ error: "Not found" });
+    res.json(results[0]);
+  });
+});
 
 app.get("/departments", (req, res) => {
   const sqlQuery = "SELECT * FROM departments";
@@ -373,44 +384,90 @@ app.put("/mails/:id/approve", (req, res) => {
   const mailId = req.params.id;
   const { adminComment } = req.body;
 
-  const getSQL = `SELECT * FROM mails WHERE id = ?`;
-  db.query(getSQL, [mailId], (err, results) => {
-    if (err || results.length === 0) {
-      return res.status(500).json({ error: "Mail not found" });
+  // 1) Выбираем письмо, чтобы получить employee_id, даты и т. д.
+  const getMailSQL = `SELECT * FROM mails WHERE id = ?`;
+  db.query(getMailSQL, [mailId], (err, mailRows) => {
+    if (err) {
+      console.error("Ошибка при получении заявки:", err);
+      return res.status(500).json({ error: "DB error on SELECT mail" });
     }
-    const mail = results[0];
+    if (!mailRows.length) {
+      return res.status(404).json({ error: "Mail not found" });
+    }
+
+    const mail = mailRows[0];
+    const empId = mail.employee_id;
+    const start = new Date(mail.start_date);
+    const end = new Date(mail.end_date);
     const days =
-      (new Date(mail.end_date) - new Date(mail.start_date)) /
-        (1000 * 60 * 60 * 24) +
-      1;
+      Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const hoursToDeduct = days * 4.5;
 
-    // Вычитаем часы из таблицы workschedules
+    // 2) Обновляем рабочие часы в workschedules
     const updateScheduleSQL = `
       UPDATE workschedules
       SET working_hours = working_hours - ?
       WHERE employee_id = ?
     `;
-    db.query(updateScheduleSQL, [hoursToDeduct, mail.employee_id], (err2) => {
+    db.query(updateScheduleSQL, [hoursToDeduct, empId], (err2) => {
       if (err2) {
+        console.error("Ошибка при обновлении workschedules:", err2);
         return res
           .status(500)
           .json({ error: "Failed to update employee hours" });
       }
 
-      // Обновляем статус и комментарий
-      const updateMailSQL = `
-          UPDATE mails
-          SET mail_status = 'approved',
-              admin_comment = ?
-          WHERE id = ?
-        `;
-      db.query(updateMailSQL, [adminComment, mailId], (err3) => {
-        if (err3) {
-          return res.status(500).json({ error: "Failed to update mail" });
+      // 3) Вставляем / обновляем time_deductions
+      const dt = new Date(mail.start_date);
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const ym = `${y}-${m}`; // например, "2025-09"
+
+      const insertDeductionSQL = `
+        INSERT INTO time_deductions
+          (employee_id, time_year_month, hours_used, hours_remaining)
+        VALUES
+          (?, ?, ?, GREATEST(135 - ?, 0))
+        ON DUPLICATE KEY UPDATE
+          hours_used      = hours_used + ?,
+          hours_remaining = hours_remaining - ?
+      `;
+      db.query(
+        insertDeductionSQL,
+        [empId, ym, hoursToDeduct, hoursToDeduct, hoursToDeduct, hoursToDeduct],
+        (err3) => {
+          if (err3) {
+            console.error("Ошибка в time_deductions:", err3);
+            return res
+              .status(500)
+              .json({ error: "Failed to upsert time_deductions" });
+          }
+
+          // 4) Обновляем статус письма
+          const updateMailSQL = `
+            UPDATE mails
+            SET mail_status = 'approved',
+                admin_comment = ?
+            WHERE id = ?
+          `;
+          db.query(updateMailSQL, [adminComment, mailId], (err4) => {
+            if (err4) {
+              console.error("Ошибка при обновлении mail:", err4);
+              return res
+                .status(500)
+                .json({ error: "Failed to update mail status" });
+            }
+
+            // 5) Отдаём обратно employee_id, чтобы фронт мог сходить за обновлённой сущностью
+            res.json({
+              message: "Заявление одобрено",
+              mailId,
+              employee_id: empId,
+              hoursDeducted: hoursToDeduct,
+            });
+          });
         }
-        res.json({ message: "Заявление одобрено", mailId });
-      });
+      );
     });
   });
 });
@@ -457,6 +514,293 @@ app.delete("/mails/:id", (req, res) => {
     if (result.affectedRows === 0)
       return res.status(404).json({ error: "Mail not found" });
     res.json({ message: "Заявление удалено", mailId });
+  });
+});
+
+// ------------- СОЗДАТЬ НОВОГО СОТРУДНИКА -------------
+app.post("/employees", (req, res) => {
+  const {
+    first_name,
+    last_name,
+    email,
+    phone_number,
+    hire_date,
+    job_title,
+    qualification,
+    salary,
+    department_name,
+    working_hours,
+    shift_type,
+  } = req.body;
+
+  if (
+    !first_name ||
+    !last_name ||
+    !email ||
+    !hire_date ||
+    !department_name ||
+    working_hours == null ||
+    !shift_type
+  ) {
+    return res.status(400).json({ error: "Отсутствуют обязательные поля" });
+  }
+
+  // 1) ОТДЕЛ: пытаемся получить department_id по имени
+  const findDeptSql =
+    "SELECT department_id FROM departments WHERE department_name = ?";
+  db.query(findDeptSql, [department_name], (deptErr, deptResults) => {
+    if (deptErr) {
+      console.error("Ошибка при поиске отдела:", deptErr);
+      return res.status(500).json({ error: "Ошибка БД (find department)." });
+    }
+
+    // Если такой отдел уже есть → deptResults[0].department_id
+    if (deptResults.length > 0) {
+      const existingDeptId = deptResults[0].department_id;
+      insertEmployee(existingDeptId);
+    } else {
+      // Вставляем новый отдел и забираем его ID
+      const insertDeptSql =
+        "INSERT INTO departments (department_name) VALUES (?);";
+      db.query(insertDeptSql, [department_name], (insDeptErr, insDeptRes) => {
+        if (insDeptErr) {
+          console.error("Ошибка при вставке нового отдела:", insDeptErr);
+          return res
+            .status(500)
+            .json({ error: "Ошибка БД (insert department)." });
+        }
+        const newDeptId = insDeptRes.insertId;
+        insertEmployee(newDeptId);
+      });
+    }
+  });
+
+  // Функция, которая вставит сотрудника, зная department_id
+  function insertEmployee(deptId) {
+    const insertEmpSql = `
+      INSERT INTO employees 
+        (first_name, last_name, email, phone_number, hire_date, job_title, qualification, salary, department_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    `;
+
+    const empValues = [
+      first_name,
+      last_name,
+      email,
+      phone_number || null,
+      hire_date,
+      job_title || null,
+      qualification || null,
+      salary || 0,
+      deptId,
+    ];
+
+    db.query(insertEmpSql, empValues, (insEmpErr, insEmpRes) => {
+      if (insEmpErr) {
+        console.error("Ошибка при вставке сотрудника:", insEmpErr);
+        return res.status(500).json({ error: "Ошибка БД (insert employee)." });
+      }
+
+      const newEmployeeId = insEmpRes.insertId;
+
+      // 3) ВСТАВКА В WORKSCHEDULES:
+      // Примем, что start_date и end_date совпадают с hire_date
+      const insertSchedSql = `
+        INSERT INTO workschedules 
+          (start_date, end_date, working_hours, shift_type, employee_id)
+        VALUES (?, ?, ?, ?, ?);
+      `;
+      const schedValues = [
+        hire_date,
+        hire_date,
+        working_hours,
+        shift_type,
+        newEmployeeId,
+      ];
+
+      db.query(insertSchedSql, schedValues, (insSchedErr, insSchedRes) => {
+        if (insSchedErr) {
+          console.error("Ошибка при вставке расписания:", insSchedErr);
+          // Если нужно, можно откатить вставку сотрудника, но для простоты вернём ошибку:
+          return res
+            .status(500)
+            .json({ error: "Ошибка БД (insert workschedule)." });
+        }
+
+        // 4) Всё успешно, возвращаем данные нового сотрудника (а можно сразу
+        // взять их из таблицы SELECT * FROM employees WHERE employee_id = newEmployeeId)
+        const selectNewSql = `
+          SELECT 
+            e.employee_id,
+            e.first_name,
+            e.last_name,
+            e.email,
+            e.phone_number,
+            e.hire_date,
+            e.job_title,
+            e.qualification,
+            e.salary,
+            e.department_id,
+            d.department_name,
+            w.working_hours,
+            w.shift_type
+          FROM employees e
+          LEFT JOIN departments d ON e.department_id = d.department_id
+          LEFT JOIN workschedules w ON e.employee_id = w.employee_id
+          WHERE e.employee_id = ?;
+        `;
+        db.query(selectNewSql, [newEmployeeId], (selErr, selRes) => {
+          if (selErr) {
+            console.error(
+              "Ошибка при получении только что созданного сотрудника:",
+              selErr
+            );
+            return res
+              .status(500)
+              .json({ error: "Ошибка БД (select new employee)." });
+          }
+          if (selRes.length === 0) {
+            return res
+              .status(404)
+              .json({ error: "Не удалось найти созданного сотрудника." });
+          }
+          // Отправляем единственный объект в массиве
+          return res.status(201).json(selRes[0]);
+        });
+      });
+    });
+  }
+});
+
+//удалить сотрудника
+app.delete("/employees/:id", (req, res) => {
+  const { id } = req.params;
+  // 1) Удаляем сначала расписание сотрудника
+  const delSched = "DELETE FROM workschedules WHERE employee_id = ?";
+  db.query(delSched, [id], (e1, r1) => {
+    if (e1) {
+      console.error(e1);
+      return res.status(500).json({ error: "Ошибка удаления расписания." });
+    }
+    // 2) Удаляем самого сотрудника
+    const delEmp = "DELETE FROM employees WHERE employee_id = ?";
+    db.query(delEmp, [id], (e2, r2) => {
+      if (e2) {
+        console.error(e2);
+        return res.status(500).json({ error: "Ошибка удаления сотрудника." });
+      }
+      return res.status(200).json({ message: "Сотрудник удалён" });
+    });
+  });
+});
+
+// ======== CREATE (POST) REPORT ========
+app.post("/reports", (req, res) => {
+  const { report_date, report_description, report_data, employee_id } =
+    req.body;
+  if (!report_date || !report_description || !report_data || !employee_id) {
+    return res.status(400).json({ error: "Неполные данные для отчёта" });
+  }
+
+  // 1) Если таблица reports объявлена без AUTO_INCREMENT, добавьте позже ALTER для auto_increment
+  // Например: ALTER TABLE reports MODIFY report_id INT NOT NULL AUTO_INCREMENT;
+
+  const sql =
+    "INSERT INTO reports (report_date, report_description, report_data, employee_id) VALUES (?, ?, ?, ?)";
+  db.query(
+    sql,
+    [report_date, report_description, report_data, employee_id],
+    (err, result) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "Ошибка при добавлении отчёта" });
+      }
+      // вернём сам объект, чтобы во фронтенде сразу обновить стейт
+      const insertedId = result.insertId;
+      return res.status(200).json({
+        report_id: insertedId,
+        report_date,
+        report_description,
+        report_data,
+        employee_id,
+      });
+    }
+  );
+});
+
+// ======== GET ALL REPORTS (для первоначальной загрузки) ========
+app.get("/reports", (req, res) => {
+  const sql = `
+    SELECT 
+      r.report_id,
+      r.report_date,
+      r.report_description,
+      r.report_data,
+      r.employee_id,
+      CONCAT(e.first_name, ' ', e.last_name) AS employee_name
+    FROM reports r
+    LEFT JOIN employees e ON r.employee_id = e.employee_id
+    ORDER BY r.report_date DESC
+  `;
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Не удалось получить отчёты" });
+    }
+    res.json(rows);
+  });
+});
+
+// PUT /time_deductions/:employee_id
+app.put("/time_deductions/:employee_id", (req, res) => {
+  const empId = req.params.employee_id;
+  // Ждём в теле { hours_remaining: <число> }
+  const { hours_remaining } = req.body;
+  if (hours_remaining == null) {
+    return res.status(400).json({ error: "Не передано hours_remaining" });
+  }
+  // Считаем, сколько всего часов уже «использовано»:
+  const used = 135 - Number(hours_remaining);
+  // Формат текущего месяца, например "2025-06"
+  const today = new Date();
+  const ym = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+
+  const sql = `
+    INSERT INTO time_deductions
+      (employee_id, time_year_month, hours_used, hours_remaining)
+    VALUES
+      (?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      hours_used      = ?,
+      hours_remaining = ?
+  `;
+  const params = [
+    empId,
+    ym,
+    used,
+    Number(hours_remaining),
+    used,
+    Number(hours_remaining),
+  ];
+
+  db.query(sql, params, (err) => {
+    if (err) {
+      console.error("Ошибка при сохранении time_deductions:", err);
+      return res
+        .status(500)
+        .json({ error: "Failed to upsert time_deductions" });
+    }
+    // Возвращаем свежие данные, чтобы фронт сразу обновил стейт
+    res.json({
+      message: "time_deductions сохранены",
+      employee_id: empId,
+      time_year_month: ym,
+      hours_used: used,
+      hours_remaining: Number(hours_remaining),
+    });
   });
 });
 

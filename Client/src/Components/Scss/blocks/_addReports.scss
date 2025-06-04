@@ -1,0 +1,186 @@
+// addReports.scss
+
+/* ============================================================
+   СЛАЙД «Добавить отчёт» + Стили иконки «Добавить отчёт»
+   ============================================================ */
+
+/* Переменные (можно перекопировать из общих или вынести в корневые) */
+$white: #ffffff;
+$white-opaque: rgba(255, 255, 255, 0.1);
+$white-border: rgba(255, 255, 255, 0.3);
+$header-height: 0; /* В данном случае шапки нет, вся секция = форма */
+$btn-green: #4caf50;
+$btn-green-hover: #388e3c;
+$icon-bg: rgba(255, 255, 255, 0.15);
+$icon-bg-hover: rgba(255, 255, 255, 0.3);
+
+$break-mobile: 480px;
+$break-tablet: 768px;
+
+/* ------------------------------------------------------------
+   1) ИКОНКА «Добавить отчёт» (там, где профиль + заявки)
+   ------------------------------------------------------------ */
+
+/*
+  .report-icon – это класс, который мы назначаем именно тому блоку,
+  в котором находится FaFileAlt (в WorkerPage.jsx)
+*/
+
+.report-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  padding: 1rem;
+  box-sizing: border-box;
+
+  .requestForm {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    padding: 2rem;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+    @media (max-width: 768px) {
+      max-width: 90%;
+      padding: 1.5rem;
+      border-radius: 6px;
+    }
+    @media (max-width: 480px) {
+      padding: 1rem;
+      border-radius: 4px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+
+      @media (max-width: 480px) {
+        font-size: 1.3rem;
+      }
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+
+      @media (max-width: 480px) {
+        gap: 0.75rem;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+
+        label {
+          margin-bottom: 0.4rem;
+          font-size: 1rem;
+
+          @media (max-width: 480px) {
+            font-size: 0.9rem;
+          }
+        }
+
+        input,
+        textarea {
+          width: 100%;
+          padding: 0.6rem 0.8rem;
+          font-size: 1rem;
+          border-radius: 6px;
+          border: none;
+          background: #fff;
+          color: #000;
+          box-sizing: border-box;
+
+          &::placeholder {
+            color: #888;
+          }
+
+          &:focus {
+            outline: 2px solid #4caf50;
+            background: #fff;
+          }
+
+          @media (max-width: 480px) {
+            padding: 0.5rem 0.6rem;
+            font-size: 0.9rem;
+          }
+        }
+
+        textarea {
+          resize: vertical;
+          min-height: 80px;
+        }
+      }
+
+      .form-buttons {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: center;
+
+        .btn {
+          background: #4caf50;
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          padding: 0.8rem 1.5rem;
+          font-size: 1rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 0.2s, transform 0.1s;
+
+          &:hover {
+            background: #388e3c;
+            transform: translateY(-1px);
+          }
+
+          @media (max-width: 480px) {
+            width: 100%;
+            padding: 0.6rem 1rem;
+            font-size: 0.9rem;
+          }
+        }
+      }
+
+      .anchorIcon {
+        position: absolute;
+        top: -24px;
+        right: 16px;
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.1s;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.4);
+          transform: translateY(-2px);
+        }
+
+        @media (max-width: 480px) {
+          top: -20px;
+          right: 12px;
+          width: 32px;
+          height: 32px;
+
+          svg {
+            width: 18px;
+            height: 18px;
+          }
+        }
+      }
+    }
+  }
+}

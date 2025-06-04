@@ -45,11 +45,14 @@
 
 /* Десктопные кнопки (>767px) */
 .desktop-header-buttons {
+  display: flex;
+  align-items: center; /* Выровнять все иконки строго по центру (вертикально) */
+  gap: 16px;
   position: absolute;
   right: 1rem;
   top: 0.75rem;
-  display: flex;
-  gap: 1.5rem;
+  // display: flex;
+  // gap: 1.5rem;
 }
 .btn-mail-desktop,
 .logout-icon-desktop {
@@ -75,6 +78,7 @@
   .mobile-header-buttons {
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 1.5rem;
     margin-top: 0.5rem;
   }

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+// EmployeeDetail.jsx
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FaTimes } from "react-icons/fa";
 import Axios from "axios";
-import "../../../../css/main.css"; //imp4
+import "../../../../css/main.css"; // imp4
 
 export default function EmployeeDetail({
   employee,
@@ -20,37 +21,40 @@ export default function EmployeeDetail({
     job_title: "",
     qualification: "",
     salary: "",
-    working_hours: "",
+    hours_remaining: "", // вместо working_hours
     shift_type: "",
   });
   const [editedDeptName, setEditedDeptName] = useState("");
   const [scheduleId, setScheduleId] = useState(null);
 
+  // Найдём расписание (shift_type) у данного сотрудника:
   const schedule = workSchedules.find(
     (s) => s.employee_id === employee.employee_id
   ) || {
     schedule_id: null,
-    working_hours: "",
     shift_type: "",
   };
 
   useEffect(() => {
-    if (employee) {
-      setFormData({
-        first_name: employee.first_name,
-        last_name: employee.last_name,
-        email: employee.email,
-        phone_number: employee.phone_number,
-        hire_date: employee.hire_date?.substring(0, 10) || "",
-        job_title: employee.job_title,
-        qualification: employee.qualification,
-        salary: employee.salary,
-        working_hours: schedule.working_hours || "",
-        shift_type: schedule.shift_type || "",
-      });
-      setEditedDeptName(employee.department_name || "");
-      setScheduleId(schedule.schedule_id);
-    }
+    if (!employee) return;
+
+    // Инициализируем форму из props.employee:
+    setFormData({
+      first_name: employee.first_name,
+      last_name: employee.last_name,
+      email: employee.email,
+      phone_number: employee.phone_number,
+      hire_date: employee.hire_date?.substring(0, 10) || "",
+      job_title: employee.job_title,
+      qualification: employee.qualification,
+      salary: employee.salary,
+      // Важно: берём именно employee.hours_remaining, а не workSchedules.working_hours
+      hours_remaining: employee.hours_remaining ?? "",
+      shift_type: schedule.shift_type || "",
+    });
+
+    setEditedDeptName(employee.department_name || "");
+    setScheduleId(schedule.schedule_id);
   }, [employee, schedule]);
 
   const handleChange = (e) => {
@@ -60,64 +64,60 @@ export default function EmployeeDetail({
 
   const handleSave = async () => {
     try {
-      // 1) employees
-      const empPayload = {
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        email: formData.email,
-        phone_number: formData.phone_number,
-        hire_date: formData.hire_date,
-        job_title: formData.job_title,
-        qualification: formData.qualification,
-        salary: formData.salary,
-      };
+      // ————————————————
+      // 1) Обновляем поля employees
       await Axios.put(
         `http://localhost:3002/employees/${employee.employee_id}`,
-        empPayload
+        {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+          phone_number: formData.phone_number,
+          hire_date: formData.hire_date,
+          job_title: formData.job_title,
+          qualification: formData.qualification,
+          salary: formData.salary,
+        }
       );
 
-      // 2) рабочие часы и смены — забираем из formData напрямую до setFormData
-      const newWorkingHours = formData.working_hours;
-      const newShiftType = formData.shift_type;
+      // 2) Обновляем shift_type в workschedules
       if (scheduleId) {
         await Axios.put(`http://localhost:3002/workschedules/${scheduleId}`, {
-          working_hours: newWorkingHours,
-          shift_type: newShiftType,
+          shift_type: formData.shift_type,
         });
       }
 
-      // 3) отдел
+      // 3) Обновляем отдел:
       await Axios.put(
         `http://localhost:3002/departments/${employee.department_id}`,
         { department_name: editedDeptName }
       );
 
-      // обновляем локальное состояние сразу на основе этих переменных:
-      setFormData((prev) => ({
-        ...prev,
-        ...empPayload,
-        working_hours: newWorkingHours,
-        shift_type: newShiftType,
-      }));
-      setEditedDeptName(editedDeptName);
+      // 4) Обновляем часы вручную в time_deductions
+      await Axios.put(
+        `http://localhost:3002/time_deductions/${employee.employee_id}`,
+        {
+          hours_remaining: Number(formData.hours_remaining),
+        }
+      );
 
-      // сообщаем родителю
-      const updatedEmployee = {
-        employee_id: employee.employee_id,
-        schedule_id: scheduleId, // <-- добавляем сюда
-        ...empPayload,
-        working_hours: newWorkingHours,
-        shift_type: newShiftType,
-        department_id: employee.department_id,
-        department_name: editedDeptName,
-      };
-      onEmployeeUpdate && onEmployeeUpdate(updatedEmployee);
+      // 5) Запрашиваем обновленного сотрудника целиком
+      const { data: updatedEmp } = await Axios.get(
+        `http://localhost:3002/employees/${employee.employee_id}`
+      );
 
-      alert("Данные успешно обновлены!");
+      // 6) Передаём наверх Dashboard
+      onEmployeeUpdate &&
+        onEmployeeUpdate({
+          ...updatedEmp,
+          department_name: editedDeptName,
+        });
+
+      alert("Данные успешно сохранены");
       onClose();
     } catch (err) {
-      console.error(err);
-      alert("Ошибка при сохранении данных.");
+      console.error("Ошибка при сохранении сотрудника:", err);
+      alert("Ошибка при сохранении данных");
     }
   };
 
@@ -146,7 +146,9 @@ export default function EmployeeDetail({
           { label: "Должность", name: "job_title", type: "text" },
           { label: "Квалификация", name: "qualification", type: "text" },
           { label: "Зарплата", name: "salary", type: "number" },
-          { label: "Рабочие часы", name: "working_hours", type: "text" },
+          // Показываем только «оставшиеся часы», пользователю нельзя вручную менять:
+          { label: "Оставшиеся часы", name: "hours_remaining", type: "text" },
+          // Поле для смены:
           { label: "Тип смены", name: "shift_type", type: "text" },
         ].map(({ label, name, type }) => (
           <div className="form-group" key={name}>
@@ -156,6 +158,9 @@ export default function EmployeeDetail({
               name={name}
               value={formData[name]}
               onChange={handleChange}
+              {...(name === "hours_remaining"
+                ? { disabled: false }
+                : { disabled: false })}
             />
           </div>
         ))}

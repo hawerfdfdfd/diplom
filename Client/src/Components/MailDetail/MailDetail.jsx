@@ -1,21 +1,43 @@
 // MailDetail.jsx
-import React, { useState } from "react";
+import { useState } from "react";
 import { FaTimes } from "react-icons/fa";
 import Axios from "axios";
-import "../../../../css/main.css"; //imp4
+import "../../../../css/main.css"; // imp4
 
-export default function MailDetail({ mail, onClose, onDecision }) {
+export default function MailDetail({
+  mail,
+  onClose,
+  onDecision,
+  onHoursUpdate,
+}) {
   const [comment, setComment] = useState("");
   const [isClosing, setIsClosing] = useState(false);
 
   const handleSubmit = async (mode) => {
     try {
-      const url = `http://localhost:3002/mails/${mail.id}/${mode}`;
-      await Axios.put(url, { adminComment: comment });
+      // 1) Отправляем PUT /mails/:id/approve или /reject
+      const { data: resp } = await Axios.put(
+        `http://localhost:3002/mails/${mail.id}/${mode}`,
+        { adminComment: comment }
+      );
+      // resp.employee_id должен прийти из сервера
+      const empId = resp.employee_id;
+      if (!empId) {
+        console.error("Не пришёл employee_id из /approve");
+      } else {
+        // 2) Сразу запрашиваем обновлённого сотрудника
+        const { data: updatedEmp } = await Axios.get(
+          `http://localhost:3002/employees/${empId}`
+        );
+        // 3) Передаём наверх, чтобы Dashboard обновил свой state
+        onHoursUpdate(updatedEmp);
+      }
+
+      // 4) Оповещаем Dashboard, что письмо обработано (удаляем из списка)
       onDecision(mail.id, mode);
-      // запускаем анимацию скрытия
+
+      // 5) Анимация закрытия
       setIsClosing(true);
-      // ждём окончания анимации (совпадает с длительностью fadeOut в CSS)
       setTimeout(() => {
         onClose();
       }, 200);

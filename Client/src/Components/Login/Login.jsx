@@ -1,9 +1,9 @@
 // Login.jsx
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import Axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { BsMortarboard } from "react-icons/bs";
-import "../../../../css/main.css";//imp4
+import "../../../../css/main.css"; //imp4
 
 export default function Login() {
   const [loginUserName, setLoginUserName] = useState("");
@@ -87,6 +87,7 @@ export default function Login() {
                   type="password"
                   id="password"
                   placeholder="Введите пароль"
+                  autoComplete="current-password"
                   onChange={(event) => setLoginPassword(event.target.value)}
                 />
               </div>

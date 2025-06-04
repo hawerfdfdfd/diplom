@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback } from "react";
+// WorkerPage.jsx
+import { useState, useEffect, useCallback } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { FaPaperPlane, FaArrowUp } from "react-icons/fa";
+import { FaPaperPlane, FaArrowUp, FaFileAlt } from "react-icons/fa";
 import Axios from "axios";
 import userImg from "../../WorkerAssets/user.png";
-import "../../../../css/main.css"; //imp4
 
 export default function WorkerPage() {
   const location = useLocation();
+  // При логине мы передали userInfo, но сами часы будем подгружать «свежие»
   const userInfo = location.state?.userInfo || null;
 
   const [slide, setSlide] = useState(0);
@@ -20,35 +21,72 @@ export default function WorkerPage() {
   const [myMails, setMyMails] = useState([]);
   const [removingId, setRemovingId] = useState(null);
 
-  // Загрузка заявлений сотрудника
+  // Новый state, чтобы хранить актуальную информацию о сотруднике (включая hours_remaining)
+  const [employeeData, setEmployeeData] = useState(null);
+
+  // Если userInfo нет (залогинен не по ссылке), просто показываем «Нет данных»
+  if (!userInfo) return <div className="workerPage">Нет данных</div>;
+  // Из userInfo достаём только ID, а все остальное подгружаем со свежими часами
+  const u = userInfo[0];
+  const empId = u.employee_id;
+
+  // 1) Загрузка «свежих» данных сотрудника (в том числе hours_remaining)
+  const fetchEmployeeData = useCallback(() => {
+    Axios.get(`http://localhost:3002/employees/${empId}`)
+      .then(({ data }) => {
+        setEmployeeData(data);
+      })
+      .catch((err) => {
+        console.error("Ошибка при загрузке профиля:", err);
+      });
+  }, [empId]);
+
+  // 2) Загрузка списка заявлений
   const fetchMyMails = useCallback(() => {
-    if (!userInfo) return;
-    const empId = userInfo[0].employee_id;
     Axios.get(`http://localhost:3002/mails/employee/${empId}`)
       .then(({ data }) => setMyMails(data))
       .catch(console.error);
-  }, [userInfo]);
+  }, [empId]);
 
   useEffect(() => {
+    // При монтировании сразу подгружаем профиль и список заявлений
+    fetchEmployeeData();
+    fetchMyMails();
+    // Блокируем прокрутку body, пока открыт этот экран
     document.body.style.overflow = "hidden";
-    fetchMyMails();
-    return () => (document.body.style.overflow = "");
-  }, [fetchMyMails]);
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [fetchEmployeeData, fetchMyMails]);
 
+  // После отправки нового заявления или после одобрения в мэйл-детале
+  // будем сбрасывать submitResult, чтобы перезагрузить заново список заявлений
   useEffect(() => {
-    fetchMyMails();
-  }, [fetchMyMails, submitResult]);
+    if (submitResult !== null) {
+      fetchMyMails();
+      fetchEmployeeData(); // пересчитаем часы сразу после отправки/одобрения
+    }
+  }, [fetchMyMails, fetchEmployeeData, submitResult]);
 
-  if (!userInfo) return <div className="workerPage">Нет данных</div>;
-  const u = userInfo[0];
+  // Если ещё не загрузились актуальные данные: показываем пока простой «Загрузка…»
+  if (!employeeData)
+    return (
+      <div className="workerPage">
+        <div className="loading">Загрузка профиля…</div>
+      </div>
+    );
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Для удобства назовём переменную `e`:
+  const e = employeeData;
+
+  // Отправка заявления (слайд 1)
+  const handleSubmit = async (evt) => {
+    evt.preventDefault();
     setIsSubmitting(true);
     setSubmitResult(null);
     try {
       await Axios.post("http://localhost:3002/mails", {
-        employee_id: u.employee_id,
+        employee_id: empId,
         subject,
         start_date: startDate,
         end_date: endDate,
@@ -59,6 +97,8 @@ export default function WorkerPage() {
       setStartDate("");
       setEndDate("");
       setReason("");
+      // возвращаемся к карточке профиля
+      setSlide(0);
     } catch {
       setSubmitResult("error");
     } finally {
@@ -66,36 +106,55 @@ export default function WorkerPage() {
     }
   };
 
+  // Отправка отчёта (слайд 2)
+  const handleReportSubmit = async (evt) => {
+    evt.preventDefault();
+    const formData = new FormData(evt.target);
+    const reportData = Object.fromEntries(formData.entries());
+
+    try {
+      await Axios.post("http://localhost:3002/reports", {
+        employee_id: empId,
+        ...reportData,
+      });
+      alert("✅ Отчёт успешно отправлен!");
+      evt.target.reset();
+      // после отправки отчёта возвращаемся к карточке профиля
+      setSlide(0);
+    } catch (error) {
+      console.error("Ошибка при отправке отчёта:", error);
+      alert("❌ Ошибка при отправке отчёта. Попробуйте снова.");
+    }
+  };
+
+  // Перевод статуса заявления на русский
   const translateStatus = (status) => {
     if (status === "approved") return "Принято";
     if (status === "rejected") return "Отклонено";
     return "В ожидании";
   };
 
+  // Удаление («прочитано») заявления
   const markRead = async (id) => {
     const el = document.getElementById(`mail-${id}`);
     if (!el) return;
 
-    // 1) Зафиксировать текущую высоту в inline max-height
+    // Для плавного сворачивания вычисляем текущую высоту и задаём её как inline max-height
     const height = el.scrollHeight;
     el.style.maxHeight = `${height}px`;
 
-    // 2) На следующий тик добавить класс removing
     requestAnimationFrame(() => {
       setRemovingId(id);
     });
 
     try {
       await Axios.delete(`http://localhost:3002/mails/${id}`);
-      // после завершения анимации и удаления из базы
       setTimeout(() => {
         setMyMails((prev) => prev.filter((m) => m.id !== id));
-        // убрать inline‑стиль, чтобы карточки нового списка рисовались нормально
         el.style.maxHeight = "";
-      }, 400); // совпадает с длительностью transition в CSS
+      }, 400);
     } catch (err) {
       console.error(err);
-      // если ошибка — сбросить класс
       setRemovingId(null);
       el.style.maxHeight = "";
     }
@@ -111,7 +170,7 @@ export default function WorkerPage() {
         </div>
       </div>
 
-      {/* Оверлей уведомления */}
+      {/* Оверлей уведомления при отправке/результате */}
       {(isSubmitting || submitResult) && (
         <div className="notify-overlay">
           <div className="notify-card">
@@ -133,11 +192,16 @@ export default function WorkerPage() {
         </div>
       )}
 
+      {/* ======================================
+            Колонка с тремя «слайдами»
+         ====================================== */}
       <div
         className="slides"
         style={{ transform: `translateY(-${slide * 100}vh)` }}
       >
-        {/* Слайд 0: профиль + мои заявления */}
+        {/* ------------------------------------------------------
+            Слайд 0: Профиль + список моих заявлений + иконки
+            ------------------------------------------------------ */}
         <section className="halfSection top">
           <div className="workerUpInfo">
             <div className="workerImgInfo">
@@ -145,16 +209,21 @@ export default function WorkerPage() {
             </div>
             <div className="workerMainInfo">
               <ul>
-                <li>Имя: {u.first_name}</li>
-                <li>Фамилия: {u.last_name}</li>
-                <li>Почта: {u.email}</li>
-                <li>Телефон: {u.phone_number}</li>
+                <li>Имя: {e.first_name}</li>
+                <li>Фамилия: {e.last_name}</li>
+                <li>Почта: {e.email}</li>
+                <li>Телефон: {e.phone_number}</li>
                 <li>
-                  Начало работы: {u.hire_date.match(/\d{4}-\d{2}-\d{2}/)[0]}
+                  Начало работы: {e.hire_date.match(/\d{4}-\d{2}-\d{2}/)[0]}
                 </li>
-                <li>Должность: {u.job_title}</li>
-                <li>Квалификация: {u.qualification}</li>
-                <li>Зарплата: {u.salary}</li>
+                <li>Должность: {e.job_title}</li>
+                <li>Квалификация: {e.qualification}</li>
+                <li>Зарплата: {e.salary}</li>
+                {/* Здесь показываем «Оставшиеся часы» */}
+                <li>
+                  Оставшиеся часы в этом месяце:{" "}
+                  <strong>{e.hours_remaining}</strong>
+                </li>
               </ul>
             </div>
 
@@ -201,14 +270,28 @@ export default function WorkerPage() {
                 <p>Заявлений нет.</p>
               )}
             </div>
-          </div>
 
-          <div className="anchorIcon" onClick={() => setSlide(1)}>
-            <FaPaperPlane size={28} />
+            {/* Иконки с якорями для перехода к формам */}
+            <div
+              className="anchorIcon mail-icon"
+              onClick={() => setSlide(1)}
+              title="Отправить заявление"
+            >
+              <FaPaperPlane size={24} />
+            </div>
+            <div
+              className="anchorIcon report-icon"
+              onClick={() => setSlide(2)}
+              title="Добавить отчёт"
+            >
+              <FaFileAlt size={24} />
+            </div>
           </div>
         </section>
 
-        {/* Слайд 1: форма */}
+        {/* ------------------------------------------------------
+            Слайд 1: Форма “Отправить заявление”
+            ------------------------------------------------------ */}
         <section className="halfSection bottom">
           <div className="requestForm">
             <h2>Заявка сотрудника</h2>
@@ -258,17 +341,75 @@ export default function WorkerPage() {
               </div>
               <div className="form-buttons">
                 <button type="submit" className="btn">
-                  Отправить
+                  Отправить заявление
                 </button>
               </div>
             </form>
-            <div className="anchorIcon" onClick={() => setSlide(0)}>
-              <FaArrowUp size={28} />
+            <div
+              className="anchorIcon"
+              onClick={() => setSlide(0)}
+              title="Вернуться к профилю"
+            >
+              <FaArrowUp size={24} />
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------
+            Слайд 2: Форма “Добавить отчёт”
+            ------------------------------------------------------ */}
+        <section className="halfSection report-section">
+          <div className="requestForm">
+            <h2>Добавить отчёт</h2>
+            <form onSubmit={handleReportSubmit}>
+              <div className="form-group">
+                <label>Дата отчёта</label>
+                <input type="date" name="report_date" required />
+              </div>
+              <div className="form-group">
+                <label>Описание</label>
+                <textarea
+                  name="report_description"
+                  rows="3"
+                  placeholder="Краткое описание"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Данные отчёта</label>
+                <input
+                  type="text"
+                  name="report_data"
+                  placeholder="Например, 12345"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Комментарий</label>
+                <textarea
+                  name="report_notes"
+                  rows="2"
+                  placeholder="Доп. комментарии (необязательно)"
+                />
+              </div>
+              <div className="form-buttons">
+                <button type="submit" className="btn">
+                  Отправить отчёт
+                </button>
+              </div>
+            </form>
+            <div
+              className="anchorIcon"
+              onClick={() => setSlide(0)}
+              title="Вернуться к профилю"
+            >
+              <FaArrowUp size={24} />
             </div>
           </div>
         </section>
       </div>
 
+      {/* Кнопка «Выйти» внизу */}
       <div className="workerDownButton">
         <Link to="/" className="btn">
           Выйти
