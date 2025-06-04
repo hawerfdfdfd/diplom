@@ -114,6 +114,8 @@ export default function Dashboard() {
     setSelectedEmployee((cur) =>
       cur && cur.employee_id === updated.employee_id ? updated : cur
     );
+
+    fetchWorkSchedules();
   };
 
   const handleLogout = () => navigate("/");
@@ -160,6 +162,8 @@ export default function Dashboard() {
           .then(({ data: fullEmp }) => {
             // 1) Добавляем «полный» объект сотрудника в локальный стейт:
             setEmployees((prev) => [fullEmp, ...prev]);
+
+            fetchWorkSchedules();
 
             // 2) Сбрасываем форму
             setNewEmployee({
@@ -335,6 +339,7 @@ export default function Dashboard() {
                       <li>Зарплата: {emp.salary}</li>
                       <li>Осталось часов: {emp.hours_remaining.toFixed(1)}</li>
                       <li>Тип смены: {emp.shift_type}</li>
+                      <li>Отдел: {emp.department_name}</li>
                     </ul>
 
                     {/* Иконка удаления в правом нижнем углу карточки */}

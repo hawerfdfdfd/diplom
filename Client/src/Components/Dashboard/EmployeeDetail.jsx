@@ -21,7 +21,7 @@ export default function EmployeeDetail({
     job_title: "",
     qualification: "",
     salary: "",
-    hours_remaining: "", // вместо working_hours
+    hours_remaining: "",
     shift_type: "",
   });
   const [editedDeptName, setEditedDeptName] = useState("");
@@ -30,32 +30,38 @@ export default function EmployeeDetail({
   // Найдём расписание (shift_type) у данного сотрудника:
   const schedule = workSchedules.find(
     (s) => s.employee_id === employee.employee_id
-  ) || {
-    schedule_id: null,
-    shift_type: "",
-  };
+  ) || { schedule_id: null, shift_type: "" };
 
   useEffect(() => {
     if (!employee) return;
 
-    // Инициализируем форму из props.employee:
+    // Если hire_date — "0000-00-00", кладём пустую строку
+    const rawDate = employee.hire_date?.substring(0, 10) || "";
+    const hireDateValid = rawDate && !rawDate.startsWith("0000") ? rawDate : "";
+
     setFormData({
       first_name: employee.first_name,
       last_name: employee.last_name,
       email: employee.email,
       phone_number: employee.phone_number,
-      hire_date: employee.hire_date?.substring(0, 10) || "",
+      hire_date: hireDateValid,
       job_title: employee.job_title,
       qualification: employee.qualification,
       salary: employee.salary,
-      // Важно: берём именно employee.hours_remaining, а не workSchedules.working_hours
+      // Берём именно employee.hours_remaining
       hours_remaining: employee.hours_remaining ?? "",
+      // Берём текущее shift_type из расписания
       shift_type: schedule.shift_type || "",
     });
 
     setEditedDeptName(employee.department_name || "");
     setScheduleId(schedule.schedule_id);
-  }, [employee, schedule]);
+  }, [
+    // в зависимостях – только employee и конкретные примитивы из schedule
+    employee,
+    schedule.schedule_id,
+    schedule.shift_type,
+  ]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -64,7 +70,6 @@ export default function EmployeeDetail({
 
   const handleSave = async () => {
     try {
-      // ————————————————
       // 1) Обновляем поля employees
       await Axios.put(
         `http://localhost:3002/employees/${employee.employee_id}`,
@@ -87,13 +92,13 @@ export default function EmployeeDetail({
         });
       }
 
-      // 3) Обновляем отдел:
+      // 3) Обновляем отдел
       await Axios.put(
         `http://localhost:3002/departments/${employee.department_id}`,
         { department_name: editedDeptName }
       );
 
-      // 4) Обновляем часы вручную в time_deductions
+      // 4) Обновляем часы вручную в time_deductions (через ваш эндпоинт)
       await Axios.put(
         `http://localhost:3002/time_deductions/${employee.employee_id}`,
         {
@@ -101,7 +106,7 @@ export default function EmployeeDetail({
         }
       );
 
-      // 5) Запрашиваем обновленного сотрудника целиком
+      // 5) Запрашиваем обновлённого сотрудника целиком
       const { data: updatedEmp } = await Axios.get(
         `http://localhost:3002/employees/${employee.employee_id}`
       );
@@ -146,9 +151,8 @@ export default function EmployeeDetail({
           { label: "Должность", name: "job_title", type: "text" },
           { label: "Квалификация", name: "qualification", type: "text" },
           { label: "Зарплата", name: "salary", type: "number" },
-          // Показываем только «оставшиеся часы», пользователю нельзя вручную менять:
-          { label: "Оставшиеся часы", name: "hours_remaining", type: "text" },
-          // Поле для смены:
+          // Теперь «оставшиеся часы» пользователь может редактировать:
+          { label: "Оставшиеся часы", name: "hours_remaining", type: "number" },
           { label: "Тип смены", name: "shift_type", type: "text" },
         ].map(({ label, name, type }) => (
           <div className="form-group" key={name}>
@@ -156,11 +160,8 @@ export default function EmployeeDetail({
             <input
               type={type}
               name={name}
-              value={formData[name]}
+              value={formData[name] ?? ""}
               onChange={handleChange}
-              {...(name === "hours_remaining"
-                ? { disabled: false }
-                : { disabled: false })}
             />
           </div>
         ))}
