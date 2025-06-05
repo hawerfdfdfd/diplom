@@ -806,6 +806,93 @@ app.put("/time_deductions/:employee_id", (req, res) => {
   });
 });
 
+//for telegramm
+// 1) POST /telegram-links
+//    Принимает JSON { employee_id, telegram_chat_id }
+//    Если запись для этого employee_id уже есть => обновляем telegram_chat_id
+//    Иначе — вставляем новую.
+app.post("/telegram-links", (req, res) => {
+  const { employee_id, telegram_chat_id } = req.body;
+
+  if (!employee_id || !telegram_chat_id) {
+    return res.status(400).json({
+      error: "Неверные данные (employee_id или telegram_chat_id отсутствует).",
+    });
+  }
+
+  // Используем INSERT ... ON DUPLICATE KEY UPDATE благодаря UNIQUE(employee_id)
+  const sql = `
+    INSERT INTO telegram_links (employee_id, telegram_chat_id)
+    VALUES (?, ?)
+    ON DUPLICATE KEY
+      UPDATE telegram_chat_id = VALUES(telegram_chat_id),
+             updated_at = CURRENT_TIMESTAMP
+  `;
+  db.query(sql, [employee_id, telegram_chat_id], (err, result) => {
+    if (err) {
+      console.error("Ошибка при вставке/обновлении telegram_links:", err);
+      return res
+        .status(500)
+        .json({ error: "DB error on upsert telegram_links." });
+    }
+    res.json({
+      message:
+        result.affectedRows === 1 ? "Привязка создана" : "Привязка обновлена",
+      employee_id,
+      telegram_chat_id,
+    });
+  });
+});
+
+// 2) GET /telegram-links/:employee_id
+//    Возвращает существующую запись, если сотрудник уже привязал Telegram.
+//    Пример ответа: { employee_id: 42, telegram_chat_id: "123456789" }
+//    Если записи нет — возвращаем 404.
+app.get("/telegram-links/:employee_id", (req, res) => {
+  const empId = req.params.employee_id;
+  const sql = `
+    SELECT employee_id, telegram_chat_id
+    FROM telegram_links
+    WHERE employee_id = ?
+  `;
+  db.query(sql, [empId], (err, rows) => {
+    if (err) {
+      console.error("Ошибка при выборе telegram_links:", err);
+      return res
+        .status(500)
+        .json({ error: "DB error on select telegram_links." });
+    }
+    if (!rows.length) {
+      return res.status(404).json({ error: "Связь не найдена" });
+    }
+    res.json(rows[0]);
+  });
+});
+
+// 3) DELETE /telegram-links/:employee_id
+//    Удаляет существующую ассоциацию (отвязывает Telegram-чат).
+app.delete("/telegram-links/:employee_id", (req, res) => {
+  const empId = req.params.employee_id;
+  const sql = `
+    DELETE FROM telegram_links
+    WHERE employee_id = ?
+  `;
+  db.query(sql, [empId], (err, result) => {
+    if (err) {
+      console.error("Ошибка при удалении telegram_links:", err);
+      return res
+        .status(500)
+        .json({ error: "DB error on delete telegram_links." });
+    }
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ error: "Связь не найдена, нечего удалять." });
+    }
+    res.json({ message: "Связь удалена", employee_id: empId });
+  });
+});
+
 app.listen(process.env.PORT || 3002, "127.0.0.1", () => {
   console.log("Server is working on 3002 port");
 });

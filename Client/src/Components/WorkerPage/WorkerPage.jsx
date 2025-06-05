@@ -1,7 +1,12 @@
 // WorkerPage.jsx
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { FaPaperPlane, FaArrowUp, FaFileAlt } from "react-icons/fa";
+import {
+  FaPaperPlane,
+  FaArrowUp,
+  FaFileAlt,
+  FaTelegramPlane,
+} from "react-icons/fa";
 import Axios from "axios";
 import userImg from "../../WorkerAssets/user.png";
 
@@ -24,11 +29,77 @@ export default function WorkerPage() {
   // Новый state, чтобы хранить актуальную информацию о сотруднике (включая hours_remaining)
   const [employeeData, setEmployeeData] = useState(null);
 
+  const [telegramChatId, setTelegramChatId] = useState(""); // текущий chat_id, если привязан
+  const [isLinkLoading, setIsLinkLoading] = useState(true); // флаг во время GET-запроса
+  const [showLinkForm, setShowLinkForm] = useState(false); // отображаем форму привязки
+  const [newChatIdInput, setNewChatIdInput] = useState("");
+
   // Если userInfo нет (залогинен не по ссылке), просто показываем «Нет данных»
   if (!userInfo) return <div className="workerPage">Нет данных</div>;
   // Из userInfo достаём только ID, а все остальное подгружаем со свежими часами
   const u = userInfo[0];
   const empId = u.employee_id;
+
+  // После того, как получили userInfo (массив с одним элементом),
+  // запрашиваем, есть ли уже связь:
+  useEffect(() => {
+    if (!userInfo) return;
+    const empId = userInfo[0].employee_id;
+
+    Axios.get(`http://localhost:3002/telegram-links/${empId}`)
+      .then(({ data }) => {
+        setTelegramChatId(data.telegram_chat_id);
+      })
+      .catch((err) => {
+        // Если 404 (связи нет) — просто оставляем пустую строку
+        if (err.response?.status !== 404) {
+          console.error("Ошибка при получении Telegram-связи:", err);
+        }
+      })
+      .finally(() => {
+        setIsLinkLoading(false);
+      });
+  }, [userInfo]);
+
+  // POST /telegram-links  —  сохраняет или обновляет связь
+  const handleLinkTelegram = async () => {
+    if (!userInfo) return;
+    const empId = userInfo[0].employee_id;
+
+    try {
+      await Axios.post("http://localhost:3002/telegram-links", {
+        employee_id: empId,
+        telegram_chat_id: newChatIdInput.trim(),
+      });
+      // После успеха:
+      setTelegramChatId(newChatIdInput.trim());
+      setNewChatIdInput("");
+      setShowLinkForm(false);
+      alert("Telegram успешно привязан!");
+    } catch (err) {
+      console.error("Ошибка привязки Telegram:", err);
+      alert("Не удалось привязать Telegram. Попробуйте снова.");
+    }
+  };
+
+  // DELETE /telegram-links/:employee_id  — отвязать
+  const handleUnlinkTelegram = async () => {
+    if (!userInfo) return;
+    const empId = userInfo[0].employee_id;
+
+    if (!window.confirm("Вы уверены, что хотите отвязать Telegram?")) {
+      return;
+    }
+
+    try {
+      await Axios.delete(`http://localhost:3002/telegram-links/${empId}`);
+      setTelegramChatId("");
+      alert("Telegram отвязан.");
+    } catch (err) {
+      console.error("Ошибка отвязки Telegram:", err);
+      alert("Не удалось отвязать Telegram. Попробуйте снова.");
+    }
+  };
 
   // 1) Загрузка «свежих» данных сотрудника (в том числе hours_remaining)
   const fetchEmployeeData = useCallback(() => {
@@ -169,6 +240,74 @@ export default function WorkerPage() {
           <div id="stars3" />
         </div>
       </div>
+
+      {/* Если связь ещё загружается — можно показать простой “Loading…” или оставить пустым */}
+      {isLinkLoading && (
+        <div className="telegram-loading">Загрузка привязки Telegram…</div>
+      )}
+
+      {/* ================== Кнопка «Telegram» ================== */}
+      {!isLinkLoading && (
+        <div className="telegram-link-wrapper">
+          {telegramChatId ? (
+            <>
+              <span className="telegram-bound-info">
+                📲 Привязан: <b>{telegramChatId}</b>
+              </span>
+              <button
+                className="unlink-btn"
+                onClick={handleUnlinkTelegram}
+                title="Отвязать Telegram"
+              >
+                Отвязать
+              </button>
+            </>
+          ) : (
+            <button
+              className="link-btn"
+              onClick={() => setShowLinkForm(true)}
+              title="Привязать Telegram"
+            >
+              <FaTelegramPlane size={24} />
+              <span className="link-label">Привязать Telegram</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Если showLinkForm === true — показываем небольшую форму */}
+      {showLinkForm && (
+        <div className="telegram-form-overlay">
+          <div className="telegram-form-card">
+            <h3>Привязка Telegram</h3>
+            <p>Введите свой Telegram Chat ID:</p>
+            <input
+              type="text"
+              value={newChatIdInput}
+              onChange={(e) => setNewChatIdInput(e.target.value)}
+              placeholder="Например, 123456789"
+            />
+            <div className="telegram-form-buttons">
+              <button
+                className="btn"
+                onClick={handleLinkTelegram}
+                disabled={!newChatIdInput.trim()}
+              >
+                Сохранить
+              </button>
+              <button
+                className="btn cancel"
+                onClick={() => {
+                  setNewChatIdInput("");
+                  setShowLinkForm(false);
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Оверлей уведомления при отправке/результате */}
       {(isSubmitting || submitResult) && (
