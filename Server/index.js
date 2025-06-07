@@ -1,8 +1,45 @@
+// в самом верху index.js
+require("dotenv").config();
+require("./telegram-handler");
+
+const axios = require("axios");
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
+
 const express = require("express");
 const mysql = require("mysql");
 const cors = require("cors");
 const path = require("path");
+const { sendTelegramMessage } = require("./telegram");
 const app = express();
+
+async function resolveChatId(usernameOrId) {
+  // если цифры — возвращаем как есть
+  if (/^\d+$/.test(usernameOrId.trim())) return usernameOrId.trim();
+
+  // иначе приводим к "@username"
+  let raw = usernameOrId.trim();
+  if (!raw.startsWith("@")) raw = "@" + raw;
+
+  // дергаем Telegram API
+  const url = `${TELEGRAM_API_BASE}/getChat?chat_id=${encodeURIComponent(raw)}`;
+  try {
+    const resp = await fetch(url);
+    const json = await resp.json();
+    if (json.ok && json.result && json.result.id) {
+      return String(json.result.id);
+    } else {
+      console.warn(
+        "resolveChatId: getChat вернул не ok:",
+        JSON.stringify(json)
+      );
+      return null;
+    }
+  } catch (e) {
+    console.error("resolveChatId: ошибка при запросе к Telegram:", e);
+    return null;
+  }
+}
 
 app.use(express.json());
 app.use(cors());
@@ -294,23 +331,59 @@ app.put("/employees/:id", (req, res) => {
 });
 
 // Приём нового заявления
+// 1) POST /mails — сохраняем заявление, а затем уведомляем директора
+// Приём нового заявления
 app.post("/mails", (req, res) => {
   const { employee_id, subject, start_date, end_date, reason } = req.body;
-  const SQL = `
+  const insertSQL = `
     INSERT INTO mails (employee_id, subject, start_date, end_date, reason)
     VALUES (?, ?, ?, ?, ?)
   `;
   db.query(
-    SQL,
+    insertSQL,
     [employee_id, subject, start_date, end_date, reason],
     (err, result) => {
       if (err) {
         console.error("Ошибка вставки заявления:", err);
         return res.status(500).json({ error: "DB insert error" });
       }
-      // Вернём созданный ID
+
+      const newMailId = result.insertId;
+
+      // === 1.1) Уведомляем директора о новом заявлении ===
+      // Предположим, что директор у нас в БД – employee_id = 10. Например:
+      const ADMIN_EMPLOYEE_ID = 10;
+
+      const fetchAdminChatIdSql = `
+      SELECT telegram_chat_id
+      FROM telegram_links
+      WHERE employee_id = ?
+    `;
+      db.query(
+        fetchAdminChatIdSql,
+        [ADMIN_EMPLOYEE_ID],
+        (errLink, rowsLink) => {
+          if (errLink) {
+            console.error(
+              "Ошибка при получении telegram_chat_id директора:",
+              errLink
+            );
+          } else if (rowsLink.length) {
+            const adminChatId = rowsLink[0].telegram_chat_id;
+            const text =
+              `📬 <b>Новое заявление #${newMailId}</b>\n` +
+              `От сотрудника (ID ${employee_id})\n` +
+              `Тема: ${subject}\n` +
+              `Период: ${start_date} — ${end_date}\n` +
+              `Причина: ${reason}`;
+            sendTelegramMessage(adminChatId, text);
+          }
+        }
+      );
+
+      // === 1.2) Отправляем клиенту ответ с созданным ID ===
       res.json({
-        id: result.insertId,
+        id: newMailId,
         employee_id,
         subject,
         start_date,
@@ -381,14 +454,15 @@ app.get("/mails/employee/:id", (req, res) => {
   });
 });
 
+// PUT /mails/:id/approve — та же логика + уведомляем автора
 // PUT /mails/:id/approve
 app.put("/mails/:id/approve", (req, res) => {
   const mailId = req.params.id;
   const { adminComment } = req.body;
 
-  // 1) Выбираем письмо, чтобы получить employee_id, даты и т. д.
-  const getMailSQL = `SELECT * FROM mails WHERE id = ?`;
-  db.query(getMailSQL, [mailId], (err, mailRows) => {
+  // 1) Получаем запись письма, чтобы выяснить employee_id и даты
+  const getMailSql = `SELECT * FROM mails WHERE id = ?`;
+  db.query(getMailSql, [mailId], (err, mailRows) => {
     if (err) {
       console.error("Ошибка при получении заявки:", err);
       return res.status(500).json({ error: "DB error on SELECT mail" });
@@ -405,7 +479,7 @@ app.put("/mails/:id/approve", (req, res) => {
       Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const hoursToDeduct = days * 4.5;
 
-    // 2) Обновляем рабочие часы в workschedules
+    // 2) Уменьшаем working_hours в workschedules
     const updateScheduleSQL = `
       UPDATE workschedules
       SET working_hours = working_hours - ?
@@ -419,11 +493,11 @@ app.put("/mails/:id/approve", (req, res) => {
           .json({ error: "Failed to update employee hours" });
       }
 
-      // 3) Вставляем / обновляем time_deductions
+      // 3) Вставляем/обновляем запись в time_deductions
       const dt = new Date(mail.start_date);
       const y = dt.getFullYear();
       const m = String(dt.getMonth() + 1).padStart(2, "0");
-      const ym = `${y}-${m}`; // например, "2025-09"
+      const ym = `${y}-${m}`; // формат «YYYY-MM»
 
       const insertDeductionSQL = `
         INSERT INTO time_deductions
@@ -445,10 +519,10 @@ app.put("/mails/:id/approve", (req, res) => {
               .json({ error: "Failed to upsert time_deductions" });
           }
 
-          // 4) Обновляем статус письма
+          // 4) Обновляем статус самого письма
           const updateMailSQL = `
             UPDATE mails
-            SET mail_status = 'approved',
+            SET mail_status   = 'approved',
                 admin_comment = ?
             WHERE id = ?
           `;
@@ -460,7 +534,29 @@ app.put("/mails/:id/approve", (req, res) => {
                 .json({ error: "Failed to update mail status" });
             }
 
-            // 5) Отдаём обратно employee_id, чтобы фронт мог сходить за обновлённой сущностью
+            // 4.1) Уведомляем автора (сотрудника) об одобрении
+            const fetchUserChatIdSql = `
+              SELECT telegram_chat_id
+              FROM telegram_links
+              WHERE employee_id = ?
+            `;
+            db.query(fetchUserChatIdSql, [empId], (errLink, rowsLink) => {
+              if (errLink) {
+                console.error(
+                  "Ошибка при получении telegram_chat_id автора:",
+                  errLink
+                );
+              } else if (rowsLink.length) {
+                const userChatId = rowsLink[0].telegram_chat_id;
+                const text =
+                  `✅ Ваше заявление #${mailId} было <b>одобрено</b>.\n` +
+                  `Комментарий администратора: ${adminComment || "—"}\n` +
+                  `Удержано часов: ${hoursToDeduct.toFixed(1)}`;
+                sendTelegramMessage(userChatId, text);
+              }
+            });
+
+            // 4.2) Возвращаем ответ клиенту
             res.json({
               message: "Заявление одобрено",
               mailId,
@@ -474,6 +570,7 @@ app.put("/mails/:id/approve", (req, res) => {
   });
 });
 
+// PUT /mails/:id/reject — та же логика + уведомляем автора письма
 // PUT /mails/:id/reject
 app.put("/mails/:id/reject", (req, res) => {
   const mailId = req.params.id;
@@ -481,15 +578,61 @@ app.put("/mails/:id/reject", (req, res) => {
 
   const updateMailSQL = `
     UPDATE mails
-    SET mail_status = 'rejected',
+    SET mail_status   = 'rejected',
         admin_comment = ?
     WHERE id = ?
   `;
   db.query(updateMailSQL, [adminComment, mailId], (err) => {
     if (err) {
-      return res.status(500).json({ error: "Failed to update mail" });
+      console.error("Ошибка при обновлении mail:", err);
+      return res.status(500).json({ error: "Failed to update mail status" });
     }
+
+    // === 3.1) Найдём employee_id автора, чтобы отправить уведомление ===
+    const getMailSql = `SELECT employee_id FROM mails WHERE id = ?`;
+    db.query(getMailSql, [mailId], (err2, rowsMail) => {
+      if (err2) {
+        console.error("Ошибка при получении письма:", err2);
+      } else if (rowsMail.length) {
+        const empId = rowsMail[0].employee_id;
+        const fetchUserChatIdSql = `
+          SELECT telegram_chat_id
+          FROM telegram_links
+          WHERE employee_id = ?
+        `;
+        db.query(fetchUserChatIdSql, [empId], (errLink, rowsLink) => {
+          if (errLink) {
+            console.error(
+              "Ошибка при получении telegram_chat_id автора:",
+              errLink
+            );
+          } else if (rowsLink.length) {
+            const userChatId = rowsLink[0].telegram_chat_id;
+            const text =
+              `❌ Ваше заявление #${mailId} было <b>отклонено</b>.\n` +
+              `Комментарий администратора: ${adminComment || "—"}`;
+            sendTelegramMessage(userChatId, text);
+          }
+        });
+      }
+    });
+
+    // === 3.2) Ответ клиенту ===
     res.json({ message: "Заявление отклонено", mailId });
+  });
+});
+
+// PUT /mails/:id/read
+app.put("/mails/:id/read", (req, res) => {
+  const mailId = req.params.id;
+  const sql = `
+    UPDATE mails
+    SET mail_status = 'read'
+    WHERE id = ?
+  `;
+  db.query(sql, [mailId], (err, result) => {
+    if (err) return res.status(500).json({ error: "DB error" });
+    res.json({ message: "Отмечено как прочитанное", mailId });
   });
 });
 
@@ -697,6 +840,7 @@ app.delete("/employees/:id", (req, res) => {
 });
 
 // ======== CREATE (POST) REPORT ========
+// POST /reports — сохраняем новый отчёт и уведомляем директора
 app.post("/reports", (req, res) => {
   const { report_date, report_description, report_data, employee_id } =
     req.body;
@@ -704,23 +848,53 @@ app.post("/reports", (req, res) => {
     return res.status(400).json({ error: "Неполные данные для отчёта" });
   }
 
-  // 1) Если таблица reports объявлена без AUTO_INCREMENT, добавьте позже ALTER для auto_increment
-  // Например: ALTER TABLE reports MODIFY report_id INT NOT NULL AUTO_INCREMENT;
-
-  const sql =
-    "INSERT INTO reports (report_date, report_description, report_data, employee_id) VALUES (?, ?, ?, ?)";
+  const insertReportSql = `
+    INSERT INTO reports (report_date, report_description, report_data, employee_id)
+    VALUES (?, ?, ?, ?)
+  `;
   db.query(
-    sql,
+    insertReportSql,
     [report_date, report_description, report_data, employee_id],
     (err, result) => {
       if (err) {
-        console.error(err);
+        console.error("Ошибка при добавлении отчёта:", err);
         return res.status(500).json({ error: "Ошибка при добавлении отчёта" });
       }
-      // вернём сам объект, чтобы во фронтенде сразу обновить стейт
-      const insertedId = result.insertId;
-      return res.status(200).json({
-        report_id: insertedId,
+
+      const newReportId = result.insertId;
+
+      // -------------------------------------------------------------
+      // 1) После успешного INSERT уведомляем директора
+      // -------------------------------------------------------------
+      const ADMIN_EMPLOYEE_ID = 10; // <-- здесь вставьте реальный ID директора
+      const fetchAdminChatSql = `
+        SELECT telegram_chat_id
+        FROM telegram_links
+        WHERE employee_id = ?
+      `;
+      db.query(fetchAdminChatSql, [ADMIN_EMPLOYEE_ID], (errLink, rowsLink) => {
+        if (errLink) {
+          console.error(
+            "Ошибка при получении telegram_chat_id директора:",
+            errLink
+          );
+        } else if (rowsLink.length) {
+          const adminChatId = rowsLink[0].telegram_chat_id;
+          const text =
+            `📈 <b>Новый отчёт №${newReportId}</b>\n` +
+            `От сотрудника (ID ${employee_id})\n` +
+            `Дата отчёта: ${report_date}\n` +
+            `Описание: ${report_description}\n` +
+            `Данные: ${report_data}`;
+          sendTelegramMessage(adminChatId, text);
+        }
+      });
+
+      // -------------------------------------------------------------
+      // 2) Возвращаем ответ клиенту
+      // -------------------------------------------------------------
+      res.status(200).json({
+        report_id: newReportId,
         report_date,
         report_description,
         report_data,
@@ -728,6 +902,157 @@ app.post("/reports", (req, res) => {
       });
     }
   );
+});
+
+app.put("/reports/:id/approve", (req, res) => {
+  const reportId = req.params.id;
+  const { adminComment } = req.body;
+
+  // 1) Сначала найдём запись, чтобы узнать автора (employee_id)
+  const getReportSql = `SELECT employee_id FROM reports WHERE report_id = ?`;
+  db.query(getReportSql, [reportId], (errFetch, rowsFetch) => {
+    if (errFetch) {
+      console.error("Ошибка при получении отчёта:", errFetch);
+      return res.status(500).json({ error: "DB error on SELECT report" });
+    }
+    if (!rowsFetch.length) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+
+    const empId = rowsFetch[0].employee_id;
+
+    // 2) Обновляем статус отчёта (здесь предполагается, что в таблице reports есть колонки report_status и admin_comment)
+    const updateReportSQL = `
+      UPDATE reports
+      SET report_status = 'approved',
+          admin_comment = ?
+      WHERE report_id = ?
+    `;
+    db.query(updateReportSQL, [adminComment, reportId], (errUpdate) => {
+      if (errUpdate) {
+        console.error("Ошибка при обновлении отчёта:", errUpdate);
+        return res
+          .status(500)
+          .json({ error: "Failed to update report status" });
+      }
+
+      // -------------------------------------------------------------
+      // 3) Уведомляем автора отчёта в Telegram
+      // -------------------------------------------------------------
+      const fetchUserChatSql = `
+        SELECT telegram_chat_id
+        FROM telegram_links
+        WHERE employee_id = ?
+      `;
+      db.query(fetchUserChatSql, [empId], (errLink, rowsLink) => {
+        if (errLink) {
+          console.error(
+            "Ошибка при получении telegram_chat_id автора:",
+            errLink
+          );
+        } else if (rowsLink.length) {
+          const userChatId = rowsLink[0].telegram_chat_id;
+          const text =
+            `✅ Ваш отчёт №${reportId} был <b>одобрен</b>.\n` +
+            `Комментарий администратора: ${adminComment || "—"}`;
+          sendTelegramMessage(userChatId, text);
+        }
+      });
+
+      // -------------------------------------------------------------
+      // 4) Возвращаем ответ клиенту
+      // -------------------------------------------------------------
+      res.json({ message: "Отчёт одобрен", reportId, employee_id: empId });
+    });
+  });
+});
+
+app.put("/reports/:id/reject", (req, res) => {
+  const reportId = req.params.id;
+  const { adminComment } = req.body;
+
+  // 1) Найдём автора (employee_id)
+  const getReportSql = `SELECT employee_id FROM reports WHERE report_id = ?`;
+  db.query(getReportSql, [reportId], (errFetch, rowsFetch) => {
+    if (errFetch) {
+      console.error("Ошибка при получении отчёта:", errFetch);
+      return res.status(500).json({ error: "DB error on SELECT report" });
+    }
+    if (!rowsFetch.length) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+
+    const empId = rowsFetch[0].employee_id;
+
+    // 2) Обновляем статус отчёта
+    const updateReportSQL = `
+      UPDATE reports
+      SET report_status = 'rejected',
+          admin_comment = ?
+      WHERE report_id = ?
+    `;
+    db.query(updateReportSQL, [adminComment, reportId], (errUpdate) => {
+      if (errUpdate) {
+        console.error("Ошибка при обновлении отчёта:", errUpdate);
+        return res
+          .status(500)
+          .json({ error: "Failed to update report status" });
+      }
+
+      // -------------------------------------------------------------
+      // 3) Уведомляем автора отчёта в Telegram
+      // -------------------------------------------------------------
+      const fetchUserChatSql = `
+        SELECT telegram_chat_id
+        FROM telegram_links
+        WHERE employee_id = ?
+      `;
+      db.query(fetchUserChatSql, [empId], (errLink, rowsLink) => {
+        if (errLink) {
+          console.error(
+            "Ошибка при получении telegram_chat_id автора:",
+            errLink
+          );
+        } else if (rowsLink.length) {
+          const userChatId = rowsLink[0].telegram_chat_id;
+          const text =
+            `❌ Ваш отчёт №${reportId} был <b>отклонён</b>.\n` +
+            `Комментарий администратора: ${adminComment || "—"}`;
+          sendTelegramMessage(userChatId, text);
+        }
+      });
+
+      // -------------------------------------------------------------
+      // 4) Возвращаем ответ клиенту
+      // -------------------------------------------------------------
+      res.json({ message: "Отчёт отклонён", reportId });
+    });
+  });
+});
+
+// ======== GET ALL REPORTS (для первоначальной загрузки) ========
+app.get("/reports", (req, res) => {
+  const sql = `
+    SELECT 
+      r.report_id,
+      r.report_date,
+      r.report_description,
+      r.report_data,
+      r.employee_id,
+      CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+      r.report_status,
+      r.admin_comment
+    FROM reports r
+    LEFT JOIN employees e ON r.employee_id = e.employee_id
+    ORDER BY r.report_date DESC
+  `;
+  db.query(sql, (err, rows) => {
+    if (err) {
+      console.error("Ошибка при получении отчётов:", err);
+      return res.status(500).json({ error: "Не удалось получить отчёты" });
+    }
+    res.json(rows);
+  });
 });
 
 // ======== GET ALL REPORTS (для первоначальной загрузки) ========
@@ -750,6 +1075,59 @@ app.get("/reports", (req, res) => {
       return res.status(500).json({ error: "Не удалось получить отчёты" });
     }
     res.json(rows);
+  });
+});
+
+// DELETE /reports/:id — удаляет отчёт и уведомляет сотрудника
+app.delete("/reports/:id", (req, res) => {
+  const reportId = req.params.id;
+
+  // 1) Сначала получаем автора отчёта
+  const getSql = `SELECT employee_id FROM reports WHERE report_id = ?`;
+  db.query(getSql, [reportId], (err, rows) => {
+    if (err) {
+      console.error("Ошибка при получении отчёта для удаления:", err);
+      return res.status(500).json({ error: "DB error on SELECT report" });
+    }
+    if (!rows.length) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+
+    const empId = rows[0].employee_id;
+
+    // 2) Удаляем запись
+    const delSql = `DELETE FROM reports WHERE report_id = ?`;
+    db.query(delSql, [reportId], (err2, result) => {
+      if (err2) {
+        console.error("Ошибка при удалении отчёта:", err2);
+        return res.status(500).json({ error: "DB delete error" });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      // 3) Отправляем уведомление сотруднику в Telegram
+      const fetchChatSql = `
+        SELECT telegram_chat_id
+        FROM telegram_links
+        WHERE employee_id = ?
+      `;
+      db.query(fetchChatSql, [empId], (errLink, rowsLink) => {
+        if (errLink) {
+          console.error(
+            "Ошибка при получении telegram_chat_id автора:",
+            errLink
+          );
+        } else if (rowsLink.length) {
+          const chatId = rowsLink[0].telegram_chat_id;
+          const text = `✅ Ваш отчёт №${reportId} был просмотрен администратором.`;
+          sendTelegramMessage(chatId, text);
+        }
+      });
+
+      // 4) Отправляем ответ клиенту
+      res.json({ message: "Отчёт удалён и автор уведомлён", reportId });
+    });
   });
 });
 
@@ -811,35 +1189,47 @@ app.put("/time_deductions/:employee_id", (req, res) => {
 //    Принимает JSON { employee_id, telegram_chat_id }
 //    Если запись для этого employee_id уже есть => обновляем telegram_chat_id
 //    Иначе — вставляем новую.
-app.post("/telegram-links", (req, res) => {
+app.post("/telegram-links", async (req, res) => {
   const { employee_id, telegram_chat_id } = req.body;
 
   if (!employee_id || !telegram_chat_id) {
     return res.status(400).json({
-      error: "Неверные данные (employee_id или telegram_chat_id отсутствует).",
+      error: "Неверные данные: employee_id или telegram_chat_id отсутствует.",
     });
   }
 
-  // Используем INSERT ... ON DUPLICATE KEY UPDATE благодаря UNIQUE(employee_id)
+  // 1) Сначала пытаемся получить реальный numeric chat_id:
+  const realChatId = await resolveChatId(telegram_chat_id);
+  if (!realChatId) {
+    console.warn("resolveChatId вернул null для:", telegram_chat_id);
+    return res.status(400).json({
+      error:
+        "Невозможно получить chat_id у пользователя “" +
+        telegram_chat_id +
+        "”. Убедитесь, что он нажал /start боту и username введён без ошибок.",
+    });
+  }
+
+  // 2) Теперь вставляем/обновляем в telegram_links
   const sql = `
     INSERT INTO telegram_links (employee_id, telegram_chat_id)
     VALUES (?, ?)
-    ON DUPLICATE KEY
-      UPDATE telegram_chat_id = VALUES(telegram_chat_id),
-             updated_at = CURRENT_TIMESTAMP
+    ON DUPLICATE KEY UPDATE
+      telegram_chat_id = VALUES(telegram_chat_id),
+      updated_at = CURRENT_TIMESTAMP
   `;
-  db.query(sql, [employee_id, telegram_chat_id], (err, result) => {
+  db.query(sql, [employee_id, realChatId], (err, result) => {
     if (err) {
       console.error("Ошибка при вставке/обновлении telegram_links:", err);
       return res
         .status(500)
-        .json({ error: "DB error on upsert telegram_links." });
+        .json({ error: "Ошибка БД при upsert telegram_links." });
     }
     res.json({
       message:
-        result.affectedRows === 1 ? "Привязка создана" : "Привязка обновлена",
+        result.affectedRows > 1 ? "Привязка обновлена" : "Привязка создана",
       employee_id,
-      telegram_chat_id,
+      telegram_chat_id: realChatId,
     });
   });
 });
@@ -863,7 +1253,7 @@ app.get("/telegram-links/:employee_id", (req, res) => {
         .json({ error: "DB error on select telegram_links." });
     }
     if (!rows.length) {
-      return res.status(404).json({ error: "Связь не найдена" });
+      return res.json({ employee_id: empId, telegram_chat_id: null });
     }
     res.json(rows[0]);
   });

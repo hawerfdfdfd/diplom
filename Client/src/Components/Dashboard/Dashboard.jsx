@@ -10,6 +10,7 @@ import {
   FaArrowUp,
   FaTrash,
   FaTelegramPlane,
+  FaFileAlt,
 } from "react-icons/fa";
 import { AnimatePresence } from "framer-motion";
 
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [slide, setSlide] = useState(0); // 0 – сотрудники, 1 – почта, 2 – добавить сотрудника
   const [searchQuery, setSearchQuery] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [reports, setReports] = useState([]);
 
   const headerWrapperRef = useRef(null);
   const cardsContainerRef = useRef(null);
@@ -79,22 +81,30 @@ export default function Dashboard() {
   // ======= Привязка Telegram =======
   const handleBindTelegram = async () => {
     if (!telegramChatId.trim()) {
-      alert("Введите ваш Telegram chat_id.");
+      alert("Введите ваш Telegram username или цифровой chat_id.");
       return;
     }
+
     const empId = userInfo[0].employee_id;
+
     try {
       setBindingInProgress(true);
-      await Axios.post("http://localhost:3002/telegram-links", {
-        employee_id: empId,
-        telegram_chat_id: telegramChatId.trim(),
-      });
-      setBoundChatId(telegramChatId.trim());
+      const { data } = await Axios.post(
+        "http://localhost:3002/telegram-links",
+        {
+          employee_id: empId,
+          telegram_chat_id: telegramChatId.trim(), // может быть "wethag8k" или "123456789"
+        }
+      );
+      setBoundChatId(data.telegram_chat_id); // сохраняем уже реальный numeric ID
       closeTelegramModal();
       alert("Telegram успешно привязан!");
     } catch (err) {
       console.error("Ошибка при сохранении telegram_chat_id:", err);
-      alert("Не удалось сохранить, попробуйте снова.");
+      const msg =
+        err.response?.data?.error ||
+        "Не удалось сохранить. Проверьте, что вы нажали /start боту и что username верный.";
+      alert(msg);
       setBindingInProgress(false);
     }
   };
@@ -150,8 +160,15 @@ export default function Dashboard() {
       .then(({ data }) => setWorkSchedules(data))
       .catch((err) => console.error("Error fetching work schedules:", err));
   };
+
+  const fetchReports = () => {
+    Axios.get("http://localhost:3002/reports")
+      .then(({ data }) => setReports(data))
+      .catch((err) => console.error("Error fetching reports:", err));
+  };
   useEffect(() => {
     fetchEmployees();
+    fetchReports();
     Axios.get("http://localhost:3002/mails")
       .then(({ data }) => setMails(data))
       .catch(console.error);
@@ -300,12 +317,7 @@ export default function Dashboard() {
       <div
         className="slides"
         style={{
-          transform:
-            slide === 0
-              ? "translateY(0)"
-              : slide === 1
-              ? "translateY(-100vh)"
-              : "translateY(-200vh)",
+          transform: `translateY(-${slide * 100}vh)`,
         }}
       >
         {/* ====================== Слайд 0: сотрудники ======================== */}
@@ -369,6 +381,12 @@ export default function Dashboard() {
                       onClick={() => setSlide(1)}
                       title="Почта заявлений"
                     />
+                    <FaFileAlt
+                      className="btn-report-desktop"
+                      size={24}
+                      onClick={() => setSlide(3)}
+                      title="Отчёты сотрудников"
+                    />
                     <FaSignOutAlt
                       className="logout-icon-desktop"
                       size={24}
@@ -388,6 +406,12 @@ export default function Dashboard() {
                       size={24}
                       onClick={() => setSlide(1)}
                       title="Почта заявлений"
+                    />
+                    <FaFileAlt
+                      className="btn-report-mobile"
+                      size={24}
+                      onClick={() => setSlide(3)}
+                      title="Отчёты сотрудников"
                     />
                     <FaSignOutAlt
                       className="logout-icon-mobile"
@@ -499,6 +523,7 @@ export default function Dashboard() {
         </section>
 
         {/* ====================== Слайд 2: добавить сотрудника ====================== */}
+        {/* ====================== Слайд 2: добавить сотрудника ====================== */}
         <section className="slide screen-add-emp">
           <header className="dashboard-header header-add-emp">
             <FaArrowUp
@@ -515,33 +540,233 @@ export default function Dashboard() {
               title="Выйти"
             />
           </header>
+
           <div className="form-wrapper">
             <form className="add-employee-form" onSubmit={handleNewSubmit}>
-              {/* … все поля формы как было ранее … */}
+              <div className="form-group">
+                <label>Имя:</label>
+                <input
+                  type="text"
+                  name="first_name"
+                  value={newEmployee.first_name}
+                  onChange={handleNewChange}
+                  placeholder="Иван"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Фамилия:</label>
+                <input
+                  type="text"
+                  name="last_name"
+                  value={newEmployee.last_name}
+                  onChange={handleNewChange}
+                  placeholder="Иванов"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Почта:</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={newEmployee.email}
+                  onChange={handleNewChange}
+                  placeholder="example@mail.com"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Телефон:</label>
+                <input
+                  type="text"
+                  name="phone_number"
+                  value={newEmployee.phone_number}
+                  onChange={handleNewChange}
+                  placeholder="+7 (___) ___-__-__"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Дата найма:</label>
+                <input
+                  type="date"
+                  name="hire_date"
+                  value={newEmployee.hire_date}
+                  onChange={handleNewChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Должность:</label>
+                <input
+                  type="text"
+                  name="job_title"
+                  value={newEmployee.job_title}
+                  onChange={handleNewChange}
+                  placeholder="Например, Менеджер"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Квалификация:</label>
+                <input
+                  type="text"
+                  name="qualification"
+                  value={newEmployee.qualification}
+                  onChange={handleNewChange}
+                  placeholder="Например, Высшее"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Зарплата:</label>
+                <input
+                  type="number"
+                  name="salary"
+                  value={newEmployee.salary}
+                  onChange={handleNewChange}
+                  placeholder="0"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Отдел:</label>
+                <input
+                  type="text"
+                  name="department_name"
+                  value={newEmployee.department_name}
+                  onChange={handleNewChange}
+                  placeholder="Например, Продажный зал"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Рабочие часы:</label>
+                <input
+                  type="number"
+                  name="working_hours"
+                  value={newEmployee.working_hours}
+                  onChange={handleNewChange}
+                  placeholder="135"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Тип смены:</label>
+                <input
+                  type="text"
+                  name="shift_type"
+                  value={newEmployee.shift_type}
+                  onChange={handleNewChange}
+                  placeholder="Например, Дневная"
+                  required
+                />
+              </div>
+
               <div className="form-actions">
-                <button type="submit">Создать</button>
+                <button type="submit" className="btn">
+                  Создать
+                </button>
               </div>
             </form>
           </div>
+        </section>
+
+        {/* === Слайд 3: отчёты сотрудников === */}
+        <section className="slide screen-reports">
+          <header className="dashboard-header header-reports">
+            <FaArrowUp
+              className="btn-back-desktop"
+              size={24}
+              onClick={() => setSlide(0)}
+              title="К сотрудникам"
+            />
+            <h2>Отчёты сотрудников</h2>
+            <FaSignOutAlt
+              className="logout-icon-desktop"
+              size={24}
+              onClick={handleLogout}
+              title="Выйти"
+            />
+          </header>
+
+          {reports.length ? (
+            <div className="reports-container">
+              {reports.map((r) => (
+                <div key={r.report_id} className="report-card">
+                  <ul>
+                    <li>
+                      <strong>№{r.report_id}</strong> от {r.report_date}
+                    </li>
+                    <li>Сотрудник: {r.employee_name}</li>
+                    <li>Описание: {r.report_description}</li>
+                    <li>Данные: {r.report_data}</li>
+                    {r.admin_comment && <li>Комментарий: {r.admin_comment}</li>}
+                  </ul>
+                  <button
+                    className="btn mark-read-btn"
+                    onClick={async () => {
+                      await Axios.delete(
+                        `http://localhost:3002/reports/${r.report_id}`
+                      );
+                      setReports((prev) =>
+                        prev.filter((x) => x.report_id !== r.report_id)
+                      );
+                    }}
+                  >
+                    ✓ Просмотрено
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="empty">Нет новых отчётов.</p>
+          )}
         </section>
       </div>
 
       {/* ==================================================================== */}
       {/* 3) ОВЕРЛЕЙ-ФОРМА для ввода chat_id (если showTelegramModal = true)      */}
       {/* ==================================================================== */}
+      {/* 1) В Dashboard.jsx, найдите часть с telegram-модалкой и замените её на следующий код: */}
       {showTelegramModal && (
         <div className="telegram-form-overlay" onClick={closeTelegramModal}>
           <div
             className="telegram-form-card"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()} // чтобы клик по карточке не закрывал форму
           >
-            <h3>Ввести Telegram chat_id</h3>
-            <input
-              type="text"
-              value={telegramChatId}
-              onChange={(e) => setTelegramChatId(e.target.value)}
-              placeholder="Введите ваш chat_id"
-            />
+            <h3>Как привязать Telegram-аккаунт</h3>
+            <ol className="telegram-instructions">
+              <li>
+                Откройте в <strong>Telegram</strong> бота{" "}
+                <code>@diplomNotification_bot</code> (или перейдите по ссылке{" "}
+                <a
+                  href="https://t.me/diplomNotification_bot"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  t.me/diplomNotification_bot
+                </a>
+                ).
+              </li>
+              <li>
+                Нажмите кнопку <code>/start</code> в чате с ботом. Это нужно,
+                чтобы бот «узнал» ваш чат и разрешил отправлять вам сообщения.
+              </li>
+              <li>
+                Дальше напишите <strong>/bind</strong> и почту которую указывали
+                при трудоустройстве.
+              </li>
+              <li>Если все хорошо вам напишет что привязка завершена.</li>
+              <li>Обновите страницу.</li>
+            </ol>
             <div className="telegram-form-buttons">
               <button
                 className="btn cancel"
@@ -550,14 +775,10 @@ export default function Dashboard() {
               >
                 Отмена
               </button>
-              <button
-                className="btn"
-                onClick={handleBindTelegram}
-                disabled={bindingInProgress}
-              >
-                Привязать
-              </button>
             </div>
+            {bindingInProgress && (
+              <div className="telegram-loading">…Сохраняем…</div>
+            )}
           </div>
         </div>
       )}

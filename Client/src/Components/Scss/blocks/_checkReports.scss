@@ -1,0 +1,113 @@
+/* Reports.scss */
+
+.screen-reports {
+  position: relative;
+  padding: 2rem 0;
+  text-align: center;
+  flex: 1; /* Позволяет занять всё высоту слайда */
+  overflow-y: auto; /* Включаем вертикальный скролл */
+}
+
+/* Заголовок модалки отчётов (аналога MailDetail) */
+.header-reports {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0 1rem;
+}
+
+.header-reports h2 {
+  margin: 0 auto;
+  color: #fff;
+}
+
+/* Контейнер карточек отчётов — грид, адаптивен как .cards-container */
+.reports-container {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem auto;
+  width: 90%;
+  max-width: 1200px;
+  grid-auto-rows: max-content;
+
+  /* Настройки колонок */
+  @media (max-width: 479px) {
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 480px) and (max-width: 767px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  @media (min-width: 768px) and (max-width: 1023px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  @media (min-width: 1024px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Отдельная карточка отчёта */
+.report-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+  box-sizing: border-box;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 150px;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  ul {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    text-align: left;
+
+    li {
+      margin-bottom: 0.25rem;
+      font-size: 0.9rem;
+
+      strong {
+        font-weight: 600;
+      }
+    }
+  }
+}
+
+/* Кнопка “Просмотрено” на карточке */
+.report-card .mark-read-btn {
+  align-self: center; /* Центрирование кнопки */
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: #4caf50;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+
+  &:hover {
+    background: #388e3c;
+  }
+}
+
+/* Пустое состояние */
+.screen-reports .empty {
+  color: #ccc;
+  margin-top: 2rem;
+}
+
+/* Курсоры для иконок */
+.btn-report-desktop,
+.btn-report-mobile,
+.report-card .mark-read-btn,
+.delete-icon {
+  cursor: pointer;
+}

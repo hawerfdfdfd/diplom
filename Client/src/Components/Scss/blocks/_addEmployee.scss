@@ -115,12 +115,11 @@ $breakpoint-tablet: 768px;
   align-items: flex-start; /* Раньше было center */
 
   /* Чтобы форма не прилипала сверху по шапке, добавим отступ сверху примерно равный высоте заголовка (48px) */
-  padding: 48px 16px 40px 16px; /* верхний = 48px, нижний = 40px, боковые = 16px */
-
+  padding: 16px 16px 40px 16px;
   background: transparent;
 
   @media (max-width: $breakpoint-mobile) {
-    padding: 48px 12px 32px 12px; /* аналогично, но боковые чуть меньше */
+    padding: 16px 12px 32px 12px;
   }
 }
 

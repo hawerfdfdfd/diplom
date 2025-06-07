@@ -15,6 +15,7 @@ export default function WorkerPage() {
   // При логине мы передали userInfo, но сами часы будем подгружать «свежие»
   const userInfo = location.state?.userInfo || null;
 
+  // Состояния для слайдов, формы заявления/отчёта
   const [slide, setSlide] = useState(0);
   const [subject, setSubject] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -26,32 +27,31 @@ export default function WorkerPage() {
   const [myMails, setMyMails] = useState([]);
   const [removingId, setRemovingId] = useState(null);
 
-  // Новый state, чтобы хранить актуальную информацию о сотруднике (включая hours_remaining)
+  // Актуальные данные профиля, включая hours_remaining
   const [employeeData, setEmployeeData] = useState(null);
 
-  const [telegramChatId, setTelegramChatId] = useState(""); // текущий chat_id, если привязан
+  // ===== Состояния для Telegram-привязки =====
+  const [telegramChatId, setTelegramChatId] = useState(""); // реальный numeric chat_id, если уже привязан
   const [isLinkLoading, setIsLinkLoading] = useState(true); // флаг во время GET-запроса
-  const [showLinkForm, setShowLinkForm] = useState(false); // отображаем форму привязки
-  const [newChatIdInput, setNewChatIdInput] = useState("");
+  const [showTelegramModal, setShowTelegramModal] = useState(false); // показывать инструкцию
+  const [bindingInProgress, setBindingInProgress] = useState(false); // флаг «сохраняем…»
+  const [newChatIdInput, setNewChatIdInput] = useState(""); // поле для ввода username или ID
 
-  // Если userInfo нет (залогинен не по ссылке), просто показываем «Нет данных»
+  // Если userInfo нет (неавторизован) — показываем заглушку
   if (!userInfo) return <div className="workerPage">Нет данных</div>;
-  // Из userInfo достаём только ID, а все остальное подгружаем со свежими часами
+
   const u = userInfo[0];
   const empId = u.employee_id;
 
-  // После того, как получили userInfo (массив с одним элементом),
-  // запрашиваем, есть ли уже связь:
+  // ===== После загрузки userInfo пытаемся получить существующую связь =====
   useEffect(() => {
     if (!userInfo) return;
-    const empId = userInfo[0].employee_id;
-
     Axios.get(`http://localhost:3002/telegram-links/${empId}`)
       .then(({ data }) => {
         setTelegramChatId(data.telegram_chat_id);
       })
       .catch((err) => {
-        // Если 404 (связи нет) — просто оставляем пустую строку
+        // если 404 — просто оставляем пустую строку
         if (err.response?.status !== 404) {
           console.error("Ошибка при получении Telegram-связи:", err);
         }
@@ -59,14 +59,20 @@ export default function WorkerPage() {
       .finally(() => {
         setIsLinkLoading(false);
       });
-  }, [userInfo]);
+  }, [userInfo, empId]);
 
-  // POST /telegram-links  —  сохраняет или обновляет связь
+  const openTelegramModal = () => setShowTelegramModal(true);
+  const closeTelegramModal = () => {
+    setNewChatIdInput("");
+    setBindingInProgress(false);
+    setShowTelegramModal(false);
+  };
+
+  // POST /telegram-links  — сохраняем или обновляем связь
   const handleLinkTelegram = async () => {
     if (!userInfo) return;
-    const empId = userInfo[0].employee_id;
-
     try {
+      setBindingInProgress(true);
       await Axios.post("http://localhost:3002/telegram-links", {
         employee_id: empId,
         telegram_chat_id: newChatIdInput.trim(),
@@ -74,34 +80,32 @@ export default function WorkerPage() {
       // После успеха:
       setTelegramChatId(newChatIdInput.trim());
       setNewChatIdInput("");
-      setShowLinkForm(false);
+      closeTelegramModal();
       alert("Telegram успешно привязан!");
     } catch (err) {
       console.error("Ошибка привязки Telegram:", err);
       alert("Не удалось привязать Telegram. Попробуйте снова.");
+      setBindingInProgress(false);
     }
   };
 
-  // DELETE /telegram-links/:employee_id  — отвязать
+  // DELETE /telegram-links/:employee_id  — отвязка
   const handleUnlinkTelegram = async () => {
     if (!userInfo) return;
-    const empId = userInfo[0].employee_id;
-
     if (!window.confirm("Вы уверены, что хотите отвязать Telegram?")) {
       return;
     }
-
     try {
       await Axios.delete(`http://localhost:3002/telegram-links/${empId}`);
       setTelegramChatId("");
       alert("Telegram отвязан.");
     } catch (err) {
       console.error("Ошибка отвязки Telegram:", err);
-      alert("Не удалось отвязать Telegram. Попробуйте снова.");
+      alert("Не удалось отвязать. Попробуйте снова.");
     }
   };
 
-  // 1) Загрузка «свежих» данных сотрудника (в том числе hours_remaining)
+  // ===== Загрузка профиля + часов =====
   const fetchEmployeeData = useCallback(() => {
     Axios.get(`http://localhost:3002/employees/${empId}`)
       .then(({ data }) => {
@@ -112,7 +116,7 @@ export default function WorkerPage() {
       });
   }, [empId]);
 
-  // 2) Загрузка списка заявлений
+  // ===== Загрузка списка заявлений =====
   const fetchMyMails = useCallback(() => {
     Axios.get(`http://localhost:3002/mails/employee/${empId}`)
       .then(({ data }) => setMyMails(data))
@@ -120,37 +124,35 @@ export default function WorkerPage() {
   }, [empId]);
 
   useEffect(() => {
-    // При монтировании сразу подгружаем профиль и список заявлений
     fetchEmployeeData();
     fetchMyMails();
-    // Блокируем прокрутку body, пока открыт этот экран
+    // Блокируем прокрутку body, пока открыт рабочий экран
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "";
     };
   }, [fetchEmployeeData, fetchMyMails]);
 
-  // После отправки нового заявления или после одобрения в мэйл-детале
-  // будем сбрасывать submitResult, чтобы перезагрузить заново список заявлений
+  // После отправки или изменения состояния заявлений — перезагружаем списки
   useEffect(() => {
     if (submitResult !== null) {
       fetchMyMails();
-      fetchEmployeeData(); // пересчитаем часы сразу после отправки/одобрения
+      fetchEmployeeData();
     }
-  }, [fetchMyMails, fetchEmployeeData, submitResult]);
+  }, [submitResult, fetchMyMails, fetchEmployeeData]);
 
-  // Если ещё не загрузились актуальные данные: показываем пока простой «Загрузка…»
-  if (!employeeData)
+  // Пока профиль ещё не загрузился
+  if (!employeeData) {
     return (
       <div className="workerPage">
         <div className="loading">Загрузка профиля…</div>
       </div>
     );
+  }
 
-  // Для удобства назовём переменную `e`:
   const e = employeeData;
 
-  // Отправка заявления (слайд 1)
+  // === Обработчик отправки заявления ===
   const handleSubmit = async (evt) => {
     evt.preventDefault();
     setIsSubmitting(true);
@@ -168,7 +170,6 @@ export default function WorkerPage() {
       setStartDate("");
       setEndDate("");
       setReason("");
-      // возвращаемся к карточке профиля
       setSlide(0);
     } catch {
       setSubmitResult("error");
@@ -177,7 +178,7 @@ export default function WorkerPage() {
     }
   };
 
-  // Отправка отчёта (слайд 2)
+  // === Обработчик отправки отчёта ===
   const handleReportSubmit = async (evt) => {
     evt.preventDefault();
     const formData = new FormData(evt.target);
@@ -190,7 +191,6 @@ export default function WorkerPage() {
       });
       alert("✅ Отчёт успешно отправлен!");
       evt.target.reset();
-      // после отправки отчёта возвращаемся к карточке профиля
       setSlide(0);
     } catch (error) {
       console.error("Ошибка при отправке отчёта:", error);
@@ -198,19 +198,17 @@ export default function WorkerPage() {
     }
   };
 
-  // Перевод статуса заявления на русский
+  // === Помощник для перевода статуса ===
   const translateStatus = (status) => {
     if (status === "approved") return "Принято";
     if (status === "rejected") return "Отклонено";
     return "В ожидании";
   };
 
-  // Удаление («прочитано») заявления
+  // === Удаление (отметка «прочитано») ===
   const markRead = async (id) => {
     const el = document.getElementById(`mail-${id}`);
     if (!el) return;
-
-    // Для плавного сворачивания вычисляем текущую высоту и задаём её как inline max-height
     const height = el.scrollHeight;
     el.style.maxHeight = `${height}px`;
 
@@ -241,12 +239,12 @@ export default function WorkerPage() {
         </div>
       </div>
 
-      {/* Если связь ещё загружается — можно показать простой “Loading…” или оставить пустым */}
+      {/* Пока идёт загрузка состояния привязки */}
       {isLinkLoading && (
         <div className="telegram-loading">Загрузка привязки Telegram…</div>
       )}
 
-      {/* ================== Кнопка «Telegram» ================== */}
+      {/* ======== Кнопка «Telegram» ======== */}
       {!isLinkLoading && (
         <div className="telegram-link-wrapper">
           {telegramChatId ? (
@@ -265,7 +263,7 @@ export default function WorkerPage() {
           ) : (
             <button
               className="link-btn"
-              onClick={() => setShowLinkForm(true)}
+              onClick={openTelegramModal}
               title="Привязать Telegram"
             >
               <FaTelegramPlane size={24} />
@@ -275,41 +273,56 @@ export default function WorkerPage() {
         </div>
       )}
 
-      {/* Если showLinkForm === true — показываем небольшую форму */}
-      {showLinkForm && (
-        <div className="telegram-form-overlay">
-          <div className="telegram-form-card">
-            <h3>Привязка Telegram</h3>
-            <p>Введите свой Telegram Chat ID:</p>
-            <input
-              type="text"
-              value={newChatIdInput}
-              onChange={(e) => setNewChatIdInput(e.target.value)}
-              placeholder="Например, 123456789"
-            />
+      {/* ======== Модалка-инструкция «Как привязать Telegram» ======== */}
+      {showTelegramModal && (
+        <div className="telegram-form-overlay" onClick={closeTelegramModal}>
+          <div
+            className="telegram-form-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>Как привязать Telegram-аккаунт</h3>
+            <ol className="telegram-instructions">
+              <li>
+                Откройте в <strong>Telegram</strong> бота{" "}
+                <code>@diplomNotification_bot</code> (или перейдите по ссылке{" "}
+                <a
+                  href="https://t.me/diplomNotification_bot"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  t.me/diplomNotification_bot
+                </a>
+                ).
+              </li>
+              <li>
+                Нажмите кнопку <code>/start</code> в чате с ботом. Это нужно,
+                чтобы бот «узнал» ваш чат и разрешил отправлять вам сообщения.
+              </li>
+              <li>
+                Дальше напишите <strong>/bind</strong> и почту которую указывали
+                при трудоустройстве.
+              </li>
+              <li>Если все хорошо вам напишет что привязка завершена.</li>
+              <li>Обновите страницу.</li>
+            </ol>
+            <div className="form-group"></div>
             <div className="telegram-form-buttons">
               <button
-                className="btn"
-                onClick={handleLinkTelegram}
-                disabled={!newChatIdInput.trim()}
-              >
-                Сохранить
-              </button>
-              <button
                 className="btn cancel"
-                onClick={() => {
-                  setNewChatIdInput("");
-                  setShowLinkForm(false);
-                }}
+                onClick={closeTelegramModal}
+                disabled={bindingInProgress}
               >
                 Отмена
               </button>
             </div>
+            {bindingInProgress && (
+              <div className="telegram-loading">…Сохраняем…</div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Оверлей уведомления при отправке/результате */}
+      {/* ======== Оверлей уведомления по результату отправки заявления ======== */}
       {(isSubmitting || submitResult) && (
         <div className="notify-overlay">
           <div className="notify-card">
@@ -331,16 +344,12 @@ export default function WorkerPage() {
         </div>
       )}
 
-      {/* ======================================
-            Колонка с тремя «слайдами»
-         ====================================== */}
+      {/* ======== Слайды: Профиль, Заявка, Отчёт ======== */}
       <div
         className="slides"
         style={{ transform: `translateY(-${slide * 100}vh)` }}
       >
-        {/* ------------------------------------------------------
-            Слайд 0: Профиль + список моих заявлений + иконки
-            ------------------------------------------------------ */}
+        {/* ------------- Слайд 0: Профиль + мои заявления + иконки ------------- */}
         <section className="halfSection top">
           <div className="workerUpInfo">
             <div className="workerImgInfo">
@@ -358,7 +367,6 @@ export default function WorkerPage() {
                 <li>Должность: {e.job_title}</li>
                 <li>Квалификация: {e.qualification}</li>
                 <li>Зарплата: {e.salary}</li>
-                {/* Здесь показываем «Оставшиеся часы» */}
                 <li>
                   Оставшиеся часы в этом месяце:{" "}
                   <strong>{e.hours_remaining}</strong>
@@ -410,7 +418,7 @@ export default function WorkerPage() {
               )}
             </div>
 
-            {/* Иконки с якорями для перехода к формам */}
+            {/* Якоря для перехода к формам */}
             <div
               className="anchorIcon mail-icon"
               onClick={() => setSlide(1)}
@@ -428,9 +436,7 @@ export default function WorkerPage() {
           </div>
         </section>
 
-        {/* ------------------------------------------------------
-            Слайд 1: Форма “Отправить заявление”
-            ------------------------------------------------------ */}
+        {/* ------------- Слайд 1: Форма «Отправить заявление» ------------- */}
         <section className="halfSection bottom">
           <div className="requestForm">
             <h2>Заявка сотрудника</h2>
@@ -494,9 +500,7 @@ export default function WorkerPage() {
           </div>
         </section>
 
-        {/* ------------------------------------------------------
-            Слайд 2: Форма “Добавить отчёт”
-            ------------------------------------------------------ */}
+        {/* ------------- Слайд 2: Форма «Добавить отчёт» ------------- */}
         <section className="halfSection report-section">
           <div className="requestForm">
             <h2>Добавить отчёт</h2>
@@ -548,7 +552,7 @@ export default function WorkerPage() {
         </section>
       </div>
 
-      {/* Кнопка «Выйти» внизу */}
+      {/* Кнопка «Выйти» */}
       <div className="workerDownButton">
         <Link to="/" className="btn">
           Выйти
