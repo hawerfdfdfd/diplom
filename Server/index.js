@@ -135,14 +135,26 @@ app.get("/departments", (req, res) => {
 });
 
 app.get("/reports", (req, res) => {
-  const sqlQuery = "SELECT * FROM reports";
-  db.query(sqlQuery, (err, result) => {
+  const sql = `
+    SELECT
+      r.report_id,
+      r.report_date,
+      r.employee_id,
+      CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+      r.report_description,
+      r.report_data,
+      r.admin_comment
+    FROM reports AS r
+    JOIN employees AS e
+      ON r.employee_id = e.employee_id
+    ORDER BY r.report_date DESC
+  `;
+  db.query(sql, (err, rows) => {
     if (err) {
-      console.error("Ошибка выполнения запроса:", err);
-      res.status(500).json({ error: "Ошибка выполнения запроса" });
-    } else {
-      res.json(result);
+      console.error("Ошибка при получении отчётов:", err);
+      return res.status(500).json({ error: "DB error on SELECT reports" });
     }
+    res.json(rows);
   });
 });
 
@@ -170,6 +182,24 @@ app.get("/workschedules", (req, res) => {
   });
 });
 
+// GET /vacations/:employee_id — все записи об отпусках/отгулах/больничных
+// 2) Новый роут для чтения vacations
+app.get("/vacations/:employee_id", (req, res) => {
+  const empId = req.params.employee_id;
+  const sql = `
+    SELECT vacation_type, start_date, end_date
+    FROM vacations
+    WHERE employee_id = ?
+    ORDER BY vacation_id DESC
+  `;
+  db.query(sql, [empId], (err, rows) => {
+    if (err) {
+      console.error("Ошибка при получении vacations:", err);
+      return res.status(500).json({ error: "DB error on SELECT vacations" });
+    }
+    res.json(rows);
+  });
+});
 app.post("/login", (req, res) => {
   const sentloginUserName = req.body.LoginUserName;
   const sentLoginPassword = req.body.LoginPassword;
@@ -455,118 +485,127 @@ app.get("/mails/employee/:id", (req, res) => {
 });
 
 // PUT /mails/:id/approve — та же логика + уведомляем автора
-// PUT /mails/:id/approve
 app.put("/mails/:id/approve", (req, res) => {
   const mailId = req.params.id;
   const { adminComment } = req.body;
 
-  // 1) Получаем запись письма, чтобы выяснить employee_id и даты
-  const getMailSql = `SELECT * FROM mails WHERE id = ?`;
-  db.query(getMailSql, [mailId], (err, mailRows) => {
+  // 1) Получаем заявку
+  db.query(`SELECT * FROM mails WHERE id = ?`, [mailId], (err, mailRows) => {
     if (err) {
       console.error("Ошибка при получении заявки:", err);
       return res.status(500).json({ error: "DB error on SELECT mail" });
     }
-    if (!mailRows.length) {
+    if (!mailRows.length)
       return res.status(404).json({ error: "Mail not found" });
-    }
 
     const mail = mailRows[0];
     const empId = mail.employee_id;
-    const start = new Date(mail.start_date);
-    const end = new Date(mail.end_date);
-    const days =
-      Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const { subject: vacationType, start_date, end_date } = mail;
+
+    // считаем часы
+    const start = new Date(start_date);
+    const end = new Date(end_date);
+    const days = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
     const hoursToDeduct = days * 4.5;
 
-    // 2) Уменьшаем working_hours в workschedules
-    const updateScheduleSQL = `
-      UPDATE workschedules
-      SET working_hours = working_hours - ?
-      WHERE employee_id = ?
-    `;
-    db.query(updateScheduleSQL, [hoursToDeduct, empId], (err2) => {
-      if (err2) {
-        console.error("Ошибка при обновлении workschedules:", err2);
-        return res
-          .status(500)
-          .json({ error: "Failed to update employee hours" });
-      }
+    // 2) Снимаем часы из workschedules
+    db.query(
+      `UPDATE workschedules SET working_hours = working_hours - ? WHERE employee_id = ?`,
+      [hoursToDeduct, empId],
+      (err2) => {
+        if (err2) {
+          console.error(err2);
+          return res
+            .status(500)
+            .json({ error: "Failed to update employee hours" });
+        }
 
-      // 3) Вставляем/обновляем запись в time_deductions
-      const dt = new Date(mail.start_date);
-      const y = dt.getFullYear();
-      const m = String(dt.getMonth() + 1).padStart(2, "0");
-      const ym = `${y}-${m}`; // формат «YYYY-MM»
-
-      const insertDeductionSQL = `
-        INSERT INTO time_deductions
-          (employee_id, time_year_month, hours_used, hours_remaining)
-        VALUES
-          (?, ?, ?, GREATEST(135 - ?, 0))
-        ON DUPLICATE KEY UPDATE
-          hours_used      = hours_used + ?,
-          hours_remaining = hours_remaining - ?
-      `;
-      db.query(
-        insertDeductionSQL,
-        [empId, ym, hoursToDeduct, hoursToDeduct, hoursToDeduct, hoursToDeduct],
-        (err3) => {
-          if (err3) {
-            console.error("Ошибка в time_deductions:", err3);
-            return res
-              .status(500)
-              .json({ error: "Failed to upsert time_deductions" });
-          }
-
-          // 4) Обновляем статус самого письма
-          const updateMailSQL = `
-            UPDATE mails
-            SET mail_status   = 'approved',
-                admin_comment = ?
-            WHERE id = ?
-          `;
-          db.query(updateMailSQL, [adminComment, mailId], (err4) => {
-            if (err4) {
-              console.error("Ошибка при обновлении mail:", err4);
+        // 3) Обновляем time_deductions (не трогаем)
+        const ym = `${start.getFullYear()}-${String(
+          start.getMonth() + 1
+        ).padStart(2, "0")}`;
+        db.query(
+          `
+            INSERT INTO time_deductions
+              (employee_id, time_year_month, hours_used, hours_remaining)
+            VALUES
+              (?, ?, ?, GREATEST(135 - ?, 0))
+            ON DUPLICATE KEY UPDATE
+              hours_used      = hours_used + ?,
+              hours_remaining = hours_remaining - ?
+          `,
+          [
+            empId,
+            ym,
+            hoursToDeduct,
+            hoursToDeduct,
+            hoursToDeduct,
+            hoursToDeduct,
+          ],
+          (err3) => {
+            if (err3) {
+              console.error(err3);
               return res
                 .status(500)
-                .json({ error: "Failed to update mail status" });
+                .json({ error: "Failed to upsert time_deductions" });
             }
 
-            // 4.1) Уведомляем автора (сотрудника) об одобрении
-            const fetchUserChatIdSql = `
-              SELECT telegram_chat_id
-              FROM telegram_links
-              WHERE employee_id = ?
-            `;
-            db.query(fetchUserChatIdSql, [empId], (errLink, rowsLink) => {
-              if (errLink) {
-                console.error(
-                  "Ошибка при получении telegram_chat_id автора:",
-                  errLink
-                );
-              } else if (rowsLink.length) {
-                const userChatId = rowsLink[0].telegram_chat_id;
-                const text =
-                  `✅ Ваше заявление #${mailId} было <b>одобрено</b>.\n` +
-                  `Комментарий администратора: ${adminComment || "—"}\n` +
-                  `Удержано часов: ${hoursToDeduct.toFixed(1)}`;
-                sendTelegramMessage(userChatId, text);
-              }
-            });
+            // 4) Обновляем статус самого mail
+            db.query(
+              `UPDATE mails SET mail_status = 'approved', admin_comment = ? WHERE id = ?`,
+              [adminComment, mailId],
+              (err4) => {
+                if (err4) {
+                  console.error(err4);
+                  return res
+                    .status(500)
+                    .json({ error: "Failed to update mail status" });
+                }
 
-            // 4.2) Возвращаем ответ клиенту
-            res.json({
-              message: "Заявление одобрено",
-              mailId,
-              employee_id: empId,
-              hoursDeducted: hoursToDeduct,
-            });
-          });
-        }
-      );
-    });
+                // 5) Вставляем новую запись в vacations без is_paid
+                db.query(
+                  `INSERT INTO vacations (employee_id, vacation_type, start_date, end_date)
+                   VALUES (?, ?, ?, ?)`,
+                  [empId, vacationType, start_date, end_date],
+                  (errV) => {
+                    if (errV)
+                      console.error("Ошибка при вставке vacations:", errV);
+                    // даже если тут ошибка — продолжаем
+                  }
+                );
+
+                // 6) Уведомляем сотрудника в Telegram
+                db.query(
+                  `SELECT telegram_chat_id FROM telegram_links WHERE employee_id = ?`,
+                  [empId],
+                  (errLink, rowsLink) => {
+                    if (errLink) console.error(errLink);
+                    else if (rowsLink.length) {
+                      const chatId = rowsLink[0].telegram_chat_id;
+                      const text =
+                        `✅ Ваше заявление #${mailId} одобрено.\n` +
+                        `Тип: ${vacationType}\n` +
+                        `Период: ${start_date} — ${end_date}\n` +
+                        `Комментарий: ${adminComment || "—"}\n` +
+                        `Удержано часов: ${hoursToDeduct.toFixed(1)}`;
+                      sendTelegramMessage(chatId, text);
+                    }
+                  }
+                );
+
+                // 7) Ответ клиенту
+                res.json({
+                  message: "Заявление одобрено",
+                  mailId,
+                  employee_id: empId,
+                  hoursDeducted: hoursToDeduct,
+                });
+              }
+            );
+          }
+        );
+      }
+    );
   });
 });
 
@@ -866,7 +905,7 @@ app.post("/reports", (req, res) => {
       // -------------------------------------------------------------
       // 1) После успешного INSERT уведомляем директора
       // -------------------------------------------------------------
-      const ADMIN_EMPLOYEE_ID = 10; // <-- здесь вставьте реальный ID директора
+      const ADMIN_EMPLOYEE_ID = 10; //айди директора
       const fetchAdminChatSql = `
         SELECT telegram_chat_id
         FROM telegram_links

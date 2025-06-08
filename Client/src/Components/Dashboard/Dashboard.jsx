@@ -20,36 +20,34 @@ import MailDetail from "../MailDetail/MailDetail";
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-
-  // ======= Проверка: пускаем только «Ольга Никитина» =======
   const userInfo = location.state?.userInfo || null;
+
+  // allow only Ольга Никитина
   useEffect(() => {
-    if (!userInfo) {
-      navigate("/", { replace: true });
-      return;
-    }
+    if (!userInfo) return navigate("/", { replace: true });
     const u = userInfo[0];
-    if (!(u.first_name === "Ольга" && u.last_name === "Никитина")) {
+    if (u.first_name !== "Ольга" || u.last_name !== "Никитина") {
       navigate("/", { replace: true });
     }
   }, [userInfo, navigate]);
 
-  // ======= Основные состояния =======
+  // refs
+  const headerWrapperRef = useRef(null);
+  const cardsContainerRef = useRef(null);
+
+  // state
   const [employees, setEmployees] = useState([]);
   const [mails, setMails] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [workSchedules, setWorkSchedules] = useState([]);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [selectedMail, setSelectedMail] = useState(null);
-  const [slide, setSlide] = useState(0); // 0 – сотрудники, 1 – почта, 2 – добавить сотрудника
-  const [searchQuery, setSearchQuery] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [reports, setReports] = useState([]);
 
-  const headerWrapperRef = useRef(null);
-  const cardsContainerRef = useRef(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedMail, setSelectedMail] = useState(null);
+  const [slide, setSlide] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-  // Для формы «Новый сотрудник»
   const [newEmployee, setNewEmployee] = useState({
     first_name: "",
     last_name: "",
@@ -64,121 +62,70 @@ export default function Dashboard() {
     shift_type: "",
   });
 
-  // ======= Состояния для Telegram-привязки =======
+  // telegram binding
   const [showTelegramModal, setShowTelegramModal] = useState(false);
   const [telegramChatId, setTelegramChatId] = useState("");
   const [bindingInProgress, setBindingInProgress] = useState(false);
   const [boundChatId, setBoundChatId] = useState(null);
 
-  // Открыть/закрыть модалку для ввода chat_id
-  const openTelegramModal = () => setShowTelegramModal(true);
-  const closeTelegramModal = () => {
-    setTelegramChatId("");
-    setBindingInProgress(false);
-    setShowTelegramModal(false);
-  };
-
-  // ======= Привязка Telegram =======
-  const handleBindTelegram = async () => {
-    if (!telegramChatId.trim()) {
-      alert("Введите ваш Telegram username или цифровой chat_id.");
-      return;
-    }
-
-    const empId = userInfo[0].employee_id;
-
-    try {
-      setBindingInProgress(true);
-      const { data } = await Axios.post(
-        "http://localhost:3002/telegram-links",
-        {
-          employee_id: empId,
-          telegram_chat_id: telegramChatId.trim(), // может быть "wethag8k" или "123456789"
-        }
-      );
-      setBoundChatId(data.telegram_chat_id); // сохраняем уже реальный numeric ID
-      closeTelegramModal();
-      alert("Telegram успешно привязан!");
-    } catch (err) {
-      console.error("Ошибка при сохранении telegram_chat_id:", err);
-      const msg =
-        err.response?.data?.error ||
-        "Не удалось сохранить. Проверьте, что вы нажали /start боту и что username верный.";
-      alert(msg);
-      setBindingInProgress(false);
-    }
-  };
-
-  // ======= Отвязка Telegram =======
-  const handleUnbindTelegram = async () => {
-    if (!boundChatId) return;
-    const empId = userInfo[0].employee_id;
-    if (!window.confirm("Вы уверены, что хотите отвязать Telegram?")) {
-      return;
-    }
-    try {
-      setBindingInProgress(true);
-      await Axios.delete(`http://localhost:3002/telegram-links/${empId}`, {
-        data: { employee_id: empId },
-      });
-      setBoundChatId(null);
-      setBindingInProgress(false);
-      alert("Telegram отвязан.");
-    } catch (err) {
-      console.error("Ошибка при отвязке Telegram:", err);
-      alert("Не удалось отвязать, попробуйте снова.");
-      setBindingInProgress(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!userInfo) return;
-    const empId = userInfo[0].employee_id;
-
-    // Запрашиваем, существует ли уже связь в БД
-    Axios.get(`http://localhost:3002/telegram-links/${empId}`)
-      .then(({ data }) => {
-        // Если связь есть, устанавливаем её в локальный стейт
-        setBoundChatId(data.telegram_chat_id);
-      })
-      .catch((err) => {
-        // Если 404 — значит связи ещё нет, просто ничего не делаем
-        if (err.response?.status !== 404) {
-          console.error("Ошибка при загрузке telegram_link:", err);
-        }
-      });
-  }, [userInfo]);
-
-  // ======= Загрузка данных сотрудников / почты / отделов / расписаний =======
-  const fetchEmployees = () => {
+  // helpers to fetch
+  const fetchEmployees = () =>
     Axios.get("http://localhost:3002/employees")
-      .then(({ data }) => setEmployees(data))
-      .catch((err) => console.error("Error fetching employees:", err));
-  };
-  const fetchWorkSchedules = () => {
+      .then(({ data }) => data)
+      .catch(() => []);
+  const fetchWorkSchedules = () =>
     Axios.get("http://localhost:3002/workschedules")
       .then(({ data }) => setWorkSchedules(data))
-      .catch((err) => console.error("Error fetching work schedules:", err));
-  };
-
-  const fetchReports = () => {
-    Axios.get("http://localhost:3002/reports")
-      .then(({ data }) => setReports(data))
-      .catch((err) => console.error("Error fetching reports:", err));
-  };
-  useEffect(() => {
-    fetchEmployees();
-    fetchReports();
+      .catch(() => {});
+  const fetchMails = () =>
     Axios.get("http://localhost:3002/mails")
       .then(({ data }) => setMails(data))
-      .catch(console.error);
+      .catch(() => {});
+  const fetchDepartments = () =>
     Axios.get("http://localhost:3002/departments")
       .then(({ data }) => setDepartments(data))
-      .catch(console.error);
-    fetchWorkSchedules();
-  }, []);
+      .catch(() => {});
+  const fetchReports = () =>
+    Axios.get("http://localhost:3002/reports")
+      .then(({ data }) => setReports(data))
+      .catch(() => {});
 
-  // ======= Скрытие шапки при скролле вверх/вниз =======
+  // load employees + vacations
+  const loadEmployeesWithVacations = async () => {
+    const emps = await fetchEmployees();
+    const empsWithVac = await Promise.all(
+      emps.map(async (e) => {
+        try {
+          const { data: vac } = await Axios.get(
+            `http://localhost:3002/vacations/${e.employee_id}`
+          );
+          return { ...e, vacations: Array.isArray(vac) ? vac : [] };
+        } catch {
+          return { ...e, vacations: [] };
+        }
+      })
+    );
+    setEmployees(empsWithVac);
+  };
+
+  // initial load
+  useEffect(() => {
+    loadEmployeesWithVacations();
+    fetchWorkSchedules();
+    fetchMails();
+    fetchDepartments();
+    fetchReports();
+
+    // telegram link
+    if (userInfo) {
+      const empId = userInfo[0].employee_id;
+      Axios.get(`http://localhost:3002/telegram-links/${empId}`)
+        .then(({ data }) => setBoundChatId(data.telegram_chat_id))
+        .catch(() => {});
+    }
+  }, [userInfo]);
+
+  // hide header on scroll
   useEffect(() => {
     const cardsEl = cardsContainerRef.current;
     const headerEl = headerWrapperRef.current;
@@ -194,45 +141,62 @@ export default function Dashboard() {
     return () => cardsEl.removeEventListener("scroll", onScroll);
   }, [selectedEmployee]);
 
-  // ======= Фильтрация сотрудников по поиску =======
+  // filtered employees
   const filteredEmployees = employees.filter((emp) =>
     `${emp.first_name} ${emp.last_name}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase())
   );
 
-  // ======= Когда вернули из модалки редактирования – обновляем список =======
-  const handleEmployeeUpdate = (updated) => {
-    if (!updated.employee_id) {
-      setEmployees((prev) => [updated, ...prev]);
-      setSelectedEmployee(null);
-      return;
+  // telegram handlers
+  const openTelegramModal = () => setShowTelegramModal(true);
+  const closeTelegramModal = () => {
+    setTelegramChatId("");
+    setBindingInProgress(false);
+    setShowTelegramModal(false);
+  };
+  const handleBindTelegram = async () => {
+    if (!telegramChatId.trim()) return alert("Введите username или chat_id");
+    const empId = userInfo[0].employee_id;
+    setBindingInProgress(true);
+    try {
+      const { data } = await Axios.post(
+        "http://localhost:3002/telegram-links",
+        { employee_id: empId, telegram_chat_id: telegramChatId.trim() }
+      );
+      setBoundChatId(data.telegram_chat_id);
+      closeTelegramModal();
+      alert("Telegram успешно привязан!");
+    } catch {
+      alert("Ошибка привязки Telegram");
+      setBindingInProgress(false);
     }
-    setEmployees((prev) =>
-      prev.map((e) => (e.employee_id === updated.employee_id ? updated : e))
-    );
-    setSelectedEmployee((cur) =>
-      cur && cur.employee_id === updated.employee_id ? updated : cur
-    );
-    fetchWorkSchedules();
+  };
+  const handleUnbindTelegram = async () => {
+    if (!boundChatId) return;
+    const empId = userInfo[0].employee_id;
+    if (!window.confirm("Отвязать Telegram?")) return;
+    try {
+      await Axios.delete(`http://localhost:3002/telegram-links/${empId}`, {
+        data: { employee_id: empId },
+      });
+      setBoundChatId(null);
+      alert("Telegram отвязан");
+    } catch {
+      alert("Ошибка отвязки Telegram");
+    }
   };
 
-  // ======= Логаут =======
-  const handleLogout = () => navigate("/");
-  const handleCloseEmployee = () => setSelectedEmployee(null);
-  const handleCloseMail = () => setSelectedMail(null);
-
-  // ======= Обработка разных действий в «Почте заявлений» =======
+  // mail decision
   const handleMailDecision = (mailId, mode) => {
-    // удаляем письмо из списка
     setMails((prev) => prev.filter((m) => m.id !== mailId));
     if (mode === "approve") {
-      fetchEmployees();
+      loadEmployeesWithVacations();
       fetchWorkSchedules();
     }
   };
 
-  // ======= Форма «Добавить нового сотрудника» =======
+  // add new employee
   const handleNewChange = (e) => {
     const { name, value } = e.target;
     setNewEmployee((prev) => ({ ...prev, [name]: value }));
@@ -246,87 +210,62 @@ export default function Dashboard() {
       ...newEmployee,
       working_hours: wh,
     })
-      .then(({ data }) => {
-        const newId = data.employee_id || data.insertId;
-        if (!newId) {
-          console.error("Не получили insertId при создании сотрудника");
-          return;
-        }
-        return Axios.get(`http://localhost:3002/employees/${newId}`).then(
-          ({ data: fullEmp }) => {
-            setEmployees((prev) => [fullEmp, ...prev]);
-            fetchWorkSchedules();
-            setNewEmployee({
-              first_name: "",
-              last_name: "",
-              email: "",
-              phone_number: "",
-              hire_date: "",
-              job_title: "",
-              qualification: "",
-              salary: "",
-              department_name: "",
-              working_hours: "",
-              shift_type: "",
-            });
-            setSuccessMessage("Сотрудник успешно создан");
-            setTimeout(() => setSuccessMessage(""), 3000);
-            setSlide(0);
-          }
-        );
+      .then(({ data }) => data.employee_id || data.insertId)
+      .then((newId) => Axios.get(`http://localhost:3002/employees/${newId}`))
+      .then(({ data: fullEmp }) => {
+        setEmployees((prev) => [fullEmp, ...prev]);
+        fetchWorkSchedules();
+        setNewEmployee({
+          first_name: "",
+          last_name: "",
+          email: "",
+          phone_number: "",
+          hire_date: "",
+          job_title: "",
+          qualification: "",
+          salary: "",
+          department_name: "",
+          working_hours: "",
+          shift_type: "",
+        });
+        setSuccessMessage("Сотрудник успешно создан");
+        setSlide(0);
+        setTimeout(() => setSuccessMessage(""), 3000);
       })
       .catch(console.error);
   };
 
-  // ======= Удаление сотрудника =======
+  // delete employee
   const handleDeleteEmployee = (employee_id) => {
-    const ok = window.confirm(
-      "Вы уверены, что хотите удалить этого сотрудника?"
-    );
-    if (!ok) return;
+    if (!window.confirm("Удалить сотрудника?")) return;
     Axios.delete(`http://localhost:3002/employees/${employee_id}`)
-      .then(() => {
+      .then(() =>
         setEmployees((prev) =>
           prev.filter((e) => e.employee_id !== employee_id)
-        );
+        )
+      )
+      .then(() => {
         setSuccessMessage("Сотрудник удалён");
         setTimeout(() => setSuccessMessage(""), 3000);
       })
       .catch(console.error);
   };
 
-  // ======= Обновление часов после «approve» =======
-  const handleHoursUpdate = (updatedEmployee) => {
-    setEmployees((prev) =>
-      prev.map((e) =>
-        e.employee_id === updatedEmployee.employee_id ? updatedEmployee : e
-      )
-    );
-  };
+  // logout
+  const handleLogout = () => navigate("/");
 
   return (
     <div className="dashboard-container">
-      {/* ==================================================================== */}
-      {/* 1) БАННЕР УСПЕХА                                                    */}
-      {/* ==================================================================== */}
       {successMessage && <div className="success-banner">{successMessage}</div>}
 
-      {/* ==================================================================== */}
-      {/* 2) СЛАЙДЫ: «Сотрудники», «Почта заявлений», «Добавить сотрудника»      */}
-      {/* ==================================================================== */}
       <div
         className="slides"
-        style={{
-          transform: `translateY(-${slide * 100}vh)`,
-        }}
+        style={{ transform: `translateY(-${slide * 100}vh)` }}
       >
-        {/* ====================== Слайд 0: сотрудники ======================== */}
+        {/* ========== Slide 0: Employees ========== */}
         <section className="slide screen-emps">
-          {/* ========== Шапка с Telegram, поиском и иконками ========== */}
           <div ref={headerWrapperRef} className="header-wrapper">
             <header className="dashboard-header">
-              {/* —————————————————————————————— */}
-              {/* 1) Кнопка «Привязать Telegram» */}
               <div className="telegram-link-wrapper">
                 {!boundChatId ? (
                   <div className="link-btn" onClick={openTelegramModal}>
@@ -351,8 +290,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* —————————————————————————————— */}
-              {/* 2) Поисковая строка */}
               {!selectedEmployee && (
                 <div className="search-container">
                   <input
@@ -364,8 +301,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* —————————————————————————————— */}
-              {/* 3) Иконки справа (Desktop) и (Mobile) */}
               {!selectedEmployee && (
                 <>
                   <div className="desktop-header-buttons">
@@ -425,20 +360,37 @@ export default function Dashboard() {
             </header>
           </div>
 
-          {/* ===== Модалка редактирования сотрудника ===== */}
           <AnimatePresence>
             {selectedEmployee && (
               <EmployeeDetail
+                key={selectedEmployee.employee_id}
                 employee={selectedEmployee}
                 departments={departments}
                 workSchedules={workSchedules}
-                onClose={handleCloseEmployee}
-                onEmployeeUpdate={handleEmployeeUpdate}
+                onClose={() => setSelectedEmployee(null)}
+                onEmployeeUpdate={(upd) => {
+                  // 1) Обновляем employees
+                  setEmployees((prev) =>
+                    prev.map((e) =>
+                      e.employee_id === upd.employee_id ? upd : e
+                    )
+                  );
+                  // 2) Обновляем workSchedules так, чтобы EmployeeDetail
+                  //    при монтировании в useEffect увидел новый shift_type
+                  setWorkSchedules((prev) =>
+                    prev.map((s) =>
+                      s.employee_id === upd.employee_id
+                        ? { ...s, shift_type: upd.shift_type }
+                        : s
+                    )
+                  );
+                  // 3) Обновляем выбранного сотрудника (открытая карточка)
+                  setSelectedEmployee(upd);
+                }}
               />
             )}
           </AnimatePresence>
 
-          {/* ===== Список карточек сотрудников ===== */}
           {!selectedEmployee && (
             <div ref={cardsContainerRef} className="cards-container">
               {filteredEmployees.length ? (
@@ -460,9 +412,20 @@ export default function Dashboard() {
                       <li>Должность: {emp.job_title}</li>
                       <li>Квалификация: {emp.qualification}</li>
                       <li>Зарплата: {emp.salary}</li>
-                      <li>Осталось часов: {emp.hours_remaining.toFixed(1)}</li>
+                      <li>Осталось часов: {emp.hours_remaining?.toFixed(1)}</li>
                       <li>Тип смены: {emp.shift_type}</li>
                       <li>Отдел: {emp.department_name}</li>
+                      {emp.vacations?.[0] && (
+                        <li>
+                          <strong>Последнее заявление:</strong>{" "}
+                          {emp.vacations[0].vacation_type}
+                          {emp.vacations[0].vacation_type === "Отпуск" &&
+                            " (оплачиваемый)"}
+                          {" с "}
+                          {emp.vacations[0].start_date.split("T")[0]} по{" "}
+                          {emp.vacations[0].end_date.split("T")[0]}
+                        </li>
+                      )}
                     </ul>
                     <FaTrash
                       className="delete-icon"
@@ -479,14 +442,14 @@ export default function Dashboard() {
           )}
         </section>
 
-        {/* ====================== Слайд 1: почта заявлений ====================== */}
+        {/* ========== Slide 1: Mail Requests ========== */}
         <section className="slide screen-mail">
           {selectedMail && (
             <MailDetail
               mail={selectedMail}
-              onClose={handleCloseMail}
+              onClose={() => setSelectedMail(null)}
               onDecision={handleMailDecision}
-              onHoursUpdate={handleHoursUpdate}
+              onHoursUpdate={loadEmployeesWithVacations}
             />
           )}
           <header className="dashboard-header header-mail">
@@ -522,15 +485,14 @@ export default function Dashboard() {
           )}
         </section>
 
-        {/* ====================== Слайд 2: добавить сотрудника ====================== */}
-        {/* ====================== Слайд 2: добавить сотрудника ====================== */}
+        {/* ========== Slide 2: Add Employee ========== */}
         <section className="slide screen-add-emp">
           <header className="dashboard-header header-add-emp">
             <FaArrowUp
               className="btn-back-desktop"
               size={24}
               onClick={() => setSlide(0)}
-              title="Назад к сотрудникам"
+              title="К сотрудникам"
             />
             <h2>Добавить сотрудника</h2>
             <FaSignOutAlt
@@ -540,7 +502,6 @@ export default function Dashboard() {
               title="Выйти"
             />
           </header>
-
           <div className="form-wrapper">
             <form className="add-employee-form" onSubmit={handleNewSubmit}>
               <div className="form-group">
@@ -669,7 +630,6 @@ export default function Dashboard() {
                   required
                 />
               </div>
-
               <div className="form-actions">
                 <button type="submit" className="btn">
                   Создать
@@ -679,7 +639,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* === Слайд 3: отчёты сотрудников === */}
+        {/* ========== Slide 3: Reports ========== */}
         <section className="slide screen-reports">
           <header className="dashboard-header header-reports">
             <FaArrowUp
@@ -696,14 +656,14 @@ export default function Dashboard() {
               title="Выйти"
             />
           </header>
-
           {reports.length ? (
             <div className="reports-container">
               {reports.map((r) => (
                 <div key={r.report_id} className="report-card">
                   <ul>
                     <li>
-                      <strong>№{r.report_id}</strong> от {r.report_date}
+                      <strong>№{r.report_id}</strong> от{" "}
+                      {r.report_date.split("T")[0]}
                     </li>
                     <li>Сотрудник: {r.employee_name}</li>
                     <li>Описание: {r.report_description}</li>
@@ -732,40 +692,26 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* ==================================================================== */}
-      {/* 3) ОВЕРЛЕЙ-ФОРМА для ввода chat_id (если showTelegramModal = true)      */}
-      {/* ==================================================================== */}
-      {/* 1) В Dashboard.jsx, найдите часть с telegram-модалкой и замените её на следующий код: */}
+      {/* Telegram modal */}
       {showTelegramModal && (
         <div className="telegram-form-overlay" onClick={closeTelegramModal}>
           <div
             className="telegram-form-card"
-            onClick={(e) => e.stopPropagation()} // чтобы клик по карточке не закрывал форму
+            onClick={(e) => e.stopPropagation()}
           >
             <h3>Как привязать Telegram-аккаунт</h3>
             <ol className="telegram-instructions">
               <li>
                 Откройте в <strong>Telegram</strong> бота{" "}
-                <code>@diplomNotification_bot</code> (или перейдите по ссылке{" "}
-                <a
-                  href="https://t.me/diplomNotification_bot"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  t.me/diplomNotification_bot
-                </a>
-                ).
+                <code>@diplomNotification_bot</code>.
               </li>
               <li>
-                Нажмите кнопку <code>/start</code> в чате с ботом. Это нужно,
-                чтобы бот «узнал» ваш чат и разрешил отправлять вам сообщения.
+                Нажмите <code>/start</code> в его чате.
               </li>
               <li>
-                Дальше напишите <strong>/bind</strong> и почту которую указывали
-                при трудоустройстве.
+                Напишите <strong>/bind</strong> и вашу рабочую почту.
               </li>
-              <li>Если все хорошо вам напишет что привязка завершена.</li>
-              <li>Обновите страницу.</li>
+              <li>После подтверждения обновите страницу.</li>
             </ol>
             <div className="telegram-form-buttons">
               <button
@@ -774,6 +720,13 @@ export default function Dashboard() {
                 disabled={bindingInProgress}
               >
                 Отмена
+              </button>
+              <button
+                className="btn"
+                onClick={handleBindTelegram}
+                disabled={bindingInProgress}
+              >
+                Сохранить
               </button>
             </div>
             {bindingInProgress && (
