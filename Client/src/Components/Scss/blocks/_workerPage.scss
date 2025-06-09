@@ -1,517 +1,222 @@
-/* blocks/workerPage.scss */
-
+// src/styles/workerPage.scss
+:root {
+  --bg: #1a1a1a;
+  --card: #242424;
+  --accent: #4caf50;
+  --text: #fff;
+}
 .workerPage {
-  position: relative;
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.notify-overlay {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 3000;
-  width: 90%;
-  max-width: 400px;
   display: flex;
-  justify-content: center;
-  pointer-events: none;
-
-  .notify-card {
-    pointer-events: all;
-    background: rgba(33, 33, 33, 0.85);
-    backdrop-filter: blur(6px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    padding: 1rem 1.5rem;
-    text-align: center;
-    color: #fff;
-    font-size: 1rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    animation: fadeIn 0.3s ease-out;
-
-    p {
-      margin: 0 0 0.75rem;
-    }
-
-    .btn {
-      background: #4caf50;
-      color: #fff;
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: background 0.2s;
-      &:hover {
-        background: #66bb6a;
-      }
-    }
-  }
-}
-
-.slides {
-  width: 100%;
-  height: 200vh;
-  transition: transform 0.6s ease-in-out;
-}
-
-.halfSection {
-  width: 100%;
   height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 1rem;
-  box-sizing: border-box;
-}
+  color: var(--text);
+  font-family: sans-serif;
 
-.halfSection.top {
-  .workerUpInfo {
-    position: relative;
-    width: 100%;
-    max-width: 600px;
+  .sidebar {
+    width: 64px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
     display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 8px;
-    padding: 1.5rem;
-    color: #fff;
-
-    .workerImgInfo {
-      flex: 0 0 120px;
-      img {
-        width: 100%;
-        border-radius: 50%;
-        border: 2px solid rgba(255, 255, 255, 0.4);
-      }
-    }
-    .workerMainInfo {
-      flex: 1 1 200px;
-      ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        li {
-          padding: 0.4rem 0;
-          font-size: 1rem;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-      }
-    }
-
-    .anchorIcon {
-      position: absolute;
-      top: -1.5rem;
-      background: rgba(255, 255, 255, 0.2);
-      padding: 0.6rem;
-      border-radius: 50%;
-      cursor: pointer;
-      transition: background 0.3s;
-      color: #fff;
-      &:hover {
-        background: rgba(255, 255, 255, 0.4);
-      }
-    }
-  }
-
-  .my-mails {
-    width: 100%;
-    margin-top: 1rem;
-    h3 {
-      margin-bottom: 0.5rem;
-    }
-    .my-mails-list {
-      list-style: none;
-      padding: 0;
-    }
-    .my-mail-card {
-      position: relative;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 1rem 1.5rem;
-      margin-bottom: 1rem;
-      color: #fff;
-      transition: opacity 0.3s ease, height 0.3s ease, margin 0.3s ease;
-      overflow: hidden;
-
-      &.removing {
-        opacity: 0;
-        height: 0;
-        margin-bottom: 0;
-        padding-top: 0;
-        padding-bottom: 0;
-      }
-
-      .mark-read-btn {
-        position: absolute;
-        top: 0.75rem;
-        right: 0.75rem;
-        background: transparent;
-        border: none;
-        color: #8f8;
-        font-size: 1.2rem;
-        cursor: pointer;
-        transition: color 0.2s;
-        &:hover {
-          color: #afa;
-        }
-      }
-
-      .admin-comment {
-        margin-top: 0.75rem;
-        font-style: italic;
-        color: #ddd;
-      }
-    }
-  }
-}
-
-.halfSection.bottom {
-  .requestForm {
-    position: relative; /* важно: привязываем абсолютное позиционирование .anchorIcon к этому контейнеру */
-    width: 100%;
-    max-width: 600px;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 8px;
-    padding: 1.5rem;
-    color: #fff;
-    box-sizing: border-box;
-
-    h2 {
-      text-align: center;
-      margin-bottom: 1rem;
-    }
-
-    .form-group {
-      margin-bottom: 1rem;
-      label {
-        display: block;
-        margin-bottom: 0.3rem;
-        font-size: 0.95rem;
-      }
-      select,
-      textarea,
-      input {
-        width: 100%;
-        padding: 0.6rem;
-        border: none;
-        border-radius: 6px;
-        background: #dad8d8; /* белый фон для select */
-        color: #000; /* чёрный текст */
-        font-size: 1rem;
-        box-sizing: border-box;
-      }
-    }
-
-    .dates {
-      display: flex;
-      gap: 1rem;
-      div {
-        flex: 1;
-      }
-    }
-
-    .form-buttons {
-      display: flex;
-      justify-content: center;
-      margin-top: 1.5rem;
-      .btn {
-        background: #4caf50;
-        color: #fff;
-        border: none;
-        border-radius: 6px;
-        padding: 0.8rem 1.5rem;
-        font-size: 1rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.2s, transform 0.1s;
-        &:hover {
-          background: rgba(255, 255, 255, 0.4);
-          transform: translateY(-2px);
-        }
-      }
-    }
-
-    .anchorIcon {
-      position: absolute;
-      bottom: 1rem; /* иконка снизу от контейнера формы */
-      left: 1rem; /* иконка слева от контейнера формы */
-      padding: 0.6rem;
-      border-radius: 50%;
-      cursor: pointer;
-      transition: background 0.3s;
-      color: #fff;
-
-      &:hover {
-        background: rgba(255, 255, 255, 0.4);
-      }
-    }
-  }
-}
-
-.workerDownButton {
-  position: absolute;
-  bottom: 1rem;
-  width: 100%;
-  text-align: center;
-  .btn {
-    text-decoration: none;
-    display: inline-block;
-    padding: 0.8rem 2rem;
-    background: rgba(255, 255, 255, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 6px;
-    color: #fff;
-    font-weight: 500;
-    transition: background 0.3s, transform 0.2s;
-    &:hover {
-      background: rgba(255, 255, 255, 0.4);
-      transform: translateY(-2px);
-    }
-  }
-}
-
-@media (max-width: 768px) {
-  .halfSection {
     flex-direction: column;
-    padding: 2rem 1rem;
+    align-items: center;
+    padding: 1rem 0;
+
+    .logo {
+      font-size: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    button,
+    .exit {
+      background: none;
+      border: none;
+      color: var(--text);
+      margin: 0.5rem 0;
+      cursor: pointer;
+      font-size: 1.2rem;
+      &.active {
+        color: var(--accent);
+      }
+    }
+    .exit {
+      margin-top: auto;
+    }
   }
-  .halfSection.top .workerUpInfo,
-  .halfSection.bottom .requestForm {
-    width: 100%;
+
+  .content {
+    margin-left: 64px;
+    flex: 1;
+    overflow-y: auto;
     padding: 1rem;
-  }
-  .workerDownButton {
-    bottom: 0.5rem;
-    .btn {
-      width: 60%;
-      max-width: 300px;
-      padding: 0.6rem 1rem;
-      font-size: 0.95rem;
-    }
-  }
-  .requestForm .form-buttons .btn {
-    width: 100%;
-  }
-}
 
-@media (max-width: 480px) {
-  .halfSection.top .workerUpInfo,
-  .halfSection.bottom .requestForm {
-    padding: 0.8rem;
-  }
-  .workerUpInfo {
-    text-align: center;
-    .workerMainInfo ul li {
-      font-size: 0.9rem;
-      padding: 0.3rem 0;
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+
+    .card {
+      padding: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transform: translateY(10px);
+      animation: fadeIn 0.4s forwards;
+
+      &.profile {
+        text-align: left;
+        .avatar {
+          display: block;
+          margin: 0 auto 0.5rem;
+          width: 80px;
+          border-radius: 50%;
+        }
+        h2 {
+          text-align: center;
+          margin: 0.5rem 0;
+        }
+        .info-list {
+          list-style: none;
+          padding: 0;
+          li {
+            margin: 0.25rem 0;
+            padding-left: 0.5rem;
+            font-size: 0.9rem;
+          }
+        }
+      }
+
+      &.mails {
+        h3 {
+          margin-bottom: 0.5rem;
+        }
+        .mail {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+          padding: 0.75rem;
+          margin-bottom: 1rem;
+          &.removing {
+            opacity: 0;
+            height: 0;
+            margin-bottom: 0;
+            padding: 0;
+            transition: all 0.3s ease;
+          }
+          .mail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            button.delete-btn {
+              background: none;
+              border: none;
+              color: #e74c3c;
+              cursor: pointer;
+              margin-left: 0.5rem;
+            }
+          }
+          small {
+            display: block;
+            margin-top: 0.5rem;
+            color: #bbb;
+          }
+          .admin-comment {
+            margin-top: 0.75rem;
+            margin-left: 1rem;
+            font-style: italic;
+            color: #ddd;
+          }
+          .status {
+            color: var(--accent);
+            margin-left: 0.5rem;
+          }
+        }
+      }
+
+      &.form {
+        h3 {
+          margin-bottom: 0.75rem;
+        }
+        form {
+          display: flex;
+          flex-direction: column;
+          gap: 0.75rem;
+          select,
+          input,
+          textarea {
+            box-sizing: border-box;
+            padding: 10px 12px;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            transition: border-color 0.2s, background 0.2s;
+            appearance: none;
+          }
+
+          select option {
+            background: var(--card);
+            color: var(--text);
+          }
+          .dates {
+            display: flex;
+            gap: 0.5rem;
+          }
+          button {
+            background: var(--accent);
+            border: none;
+            color: #fff;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            align-self: flex-start;
+          }
+        }
+        .unlink-btn {
+          margin-top: 1rem;
+          background: var(--accent);
+          border: none;
+          color: #fff;
+          padding: 0.5rem 1rem;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+      }
     }
   }
-  .requestForm .dates {
+
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (max-width: 768px) {
     flex-direction: column;
-  }
-}
-
-/* Блок «Мои заявления» */
-.my-mails-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.my-mail-card {
-  position: relative;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 1rem 1.5rem;
-  margin-bottom: 1rem;
-  color: #fff;
-
-  /* Переходы для плавного удаления */
-  transition: opacity 0.4s ease, max-height 0.4s ease, margin-bottom 0.4s ease,
-    padding-top 0.4s ease, padding-bottom 0.4s ease;
-  max-height: 1000px; // любое большое значение по умолчанию
-  overflow: hidden;
-  &.removing {
-    opacity: 0;
-    max-height: 0;
-    margin-bottom: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-
-  .mark-read-btn {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    background: transparent;
-    border: none;
-    color: #8f8;
-    font-size: 1.2rem;
-    cursor: pointer;
-    transition: color 0.2s;
-    &:hover {
-      color: #afa;
+    .sidebar {
+      flex-direction: row;
+      width: 100%;
+      height: 56px;
+      bottom: auto;
+      padding: 0;
+      justify-content: center;
+      z-index: 100;
+      .logo {
+        display: none;
+      }
+      button,
+      .exit {
+        margin: 0 0.5rem;
+      }
+    }
+    .content {
+      margin-left: 0;
+      margin-top: 56px;
+      padding: 0.5rem;
     }
   }
-
-  .admin-comment {
-    margin-top: 0.75rem;
-    font-style: italic;
-    color: #ddd;
-  }
-}
-
-.mail-icon {
-  /* top и right по-умолчанию унаследуются из .anchorIcon, но явно можно повторить */
-  top: -1.5rem;
-  right: 1rem;
-}
-
-/* 2) Иконка «Добавить отчёт» (сдвигаем левее) */
-.report-icon {
-  top: -1.5rem;
-  right: 5rem; /* сдвигаем примерно на 4rem влево от mail-icon */
-}
-
-//for telegramm
-
-/* … уже существующие стили WorkerPage … */
-
-/* 1) Обёртка для иконки/кнопки Telegram */
-.telegram-link-wrapper {
-  position: absolute;
-  top: 1rem;
-  left: 1rem; /* смещаем в левый верхний угол (или подберите своё расположение) */
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  z-index: 100;
-}
-
-.telegram-link-wrapper .link-btn {
-  display: flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 6px;
-  padding: 0.4rem 0.6rem;
-  color: #fff;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.telegram-link-wrapper .link-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
-}
-
-.telegram-link-wrapper .link-btn .link-label {
-  margin-left: 0.3rem;
-  font-size: 0.9rem;
-}
-
-.telegram-link-wrapper .telegram-bound-info {
-  color: #fff;
-  font-size: 0.9rem;
-}
-
-.telegram-link-wrapper .unlink-btn {
-  margin-left: 0.5rem;
-  background: rgba(255, 80, 80, 0.8);
-  border: none;
-  border-radius: 4px;
-  padding: 0.4rem 0.6rem;
-  color: #fff;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.telegram-link-wrapper .unlink-btn:hover {
-  background: rgba(255, 60, 60, 1);
-}
-
-/* 2) Overlay-форма для ввода chat_id */
-.telegram-form-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-}
-
-.telegram-form-card {
-  background: rgba(33, 33, 33, 0.9);
-  padding: 1.5rem 2rem;
-  border-radius: 8px;
-  max-width: 320px;
-  width: 90%;
-  text-align: center;
-  color: #fff;
-}
-
-.telegram-form-card h3 {
-  margin: 0 0 1rem;
-  font-size: 1.2rem;
-}
-
-.telegram-form-card input[type="text"] {
-  width: 100%;
-  padding: 0.5rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  margin-bottom: 1rem;
-  box-sizing: border-box;
-}
-
-.telegram-form-buttons {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.telegram-form-buttons .btn {
-  flex: 1;
-  background: #4caf50;
-  border: none;
-  color: #fff;
-  padding: 0.5rem 0;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.telegram-form-buttons .btn:hover {
-  background: #388e3c;
-}
-
-.telegram-form-buttons .btn.cancel {
-  background: #888;
-}
-
-.telegram-form-buttons .btn.cancel:hover {
-  background: #555;
-}
-
-/* 3) Состояние загрузки */
-.telegram-loading {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  color: #fff;
-  font-size: 0.9rem;
-  z-index: 100;
 }
