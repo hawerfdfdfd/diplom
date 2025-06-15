@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Axios from "axios";
+import ReactDOM from "react-dom";
 import {
   FaEdit,
   FaSignOutAlt,
@@ -67,6 +68,7 @@ export default function Dashboard() {
   const [telegramChatId, setTelegramChatId] = useState("");
   const [bindingInProgress, setBindingInProgress] = useState(false);
   const [boundChatId, setBoundChatId] = useState(null);
+  const [modalState, setModalState] = useState("closed"); // 'closed', 'opening', 'open', 'closing'
 
   // helpers to fetch
   const fetchEmployees = () =>
@@ -149,12 +151,24 @@ export default function Dashboard() {
   );
 
   // telegram handlers
-  const openTelegramModal = () => setShowTelegramModal(true);
-  const closeTelegramModal = () => {
-    setTelegramChatId("");
-    setBindingInProgress(false);
-    setShowTelegramModal(false);
+  const openTelegramModal = () => {
+    setShowTelegramModal(true);
+    setModalState("opening");
+
+    setTimeout(() => {
+      setModalState("open");
+    }, 10);
   };
+
+  const closeTelegramModal = () => {
+    setModalState("closing");
+
+    setTimeout(() => {
+      setShowTelegramModal(false);
+      setModalState("closed");
+    }, 300);
+  };
+
   const handleBindTelegram = async () => {
     if (!telegramChatId.trim()) return alert("Введите username или chat_id");
     const empId = userInfo[0].employee_id;
@@ -172,6 +186,7 @@ export default function Dashboard() {
       setBindingInProgress(false);
     }
   };
+
   const handleUnbindTelegram = async () => {
     if (!boundChatId) return;
     const empId = userInfo[0].employee_id;
@@ -693,48 +708,47 @@ export default function Dashboard() {
       </div>
 
       {/* Telegram modal */}
-      {showTelegramModal && (
-        <div className="telegram-form-overlay" onClick={closeTelegramModal}>
+      {showTelegramModal &&
+        ReactDOM.createPortal(
           <div
-            className="telegram-form-card"
-            onClick={(e) => e.stopPropagation()}
+            className={`telegram-form-overlay ${
+              modalState === "open"
+                ? "active"
+                : modalState === "closing"
+                ? "closing"
+                : ""
+            }`}
+            onClick={closeTelegramModal}
           >
-            <h3>Как привязать Telegram-аккаунт</h3>
-            <ol className="telegram-instructions">
-              <li>
-                Откройте в <strong>Telegram</strong> бота{" "}
-                <code>@diplomNotification_bot</code>.
-              </li>
-              <li>
-                Нажмите <code>/start</code> в его чате.
-              </li>
-              <li>
-                Напишите <strong>/bind</strong> и вашу рабочую почту.
-              </li>
-              <li>После подтверждения обновите страницу.</li>
-            </ol>
-            <div className="telegram-form-buttons">
+            <div
+              className={`telegram-form-card ${
+                modalState === "closing" ? "closing" : ""
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3>Инструкция по привязке Telegram</h3>
+              <ol>
+                <li className="li-telegram-modal">
+                  Откройте бота <code>@diplomNotification_bot</code>.
+                </li>
+                <li className="li-telegram-modal">
+                  Нажмите <code>/start</code>, затем <code>/bind</code> и
+                  введите почту которую <br />
+                  указывали при трудоустройстве.
+                </li>
+                <li className="li-telegram-modal">Бот подтвердит привязку.</li>
+                <li className="li-telegram-modal">Обновите страницу.</li>
+              </ol>
               <button
-                className="btn cancel"
+                className="close-telegram-modalBtn"
                 onClick={closeTelegramModal}
-                disabled={bindingInProgress}
               >
-                Отмена
-              </button>
-              <button
-                className="btn"
-                onClick={handleBindTelegram}
-                disabled={bindingInProgress}
-              >
-                Сохранить
+                Закрыть
               </button>
             </div>
-            {bindingInProgress && (
-              <div className="telegram-loading">…Сохраняем…</div>
-            )}
-          </div>
-        </div>
-      )}
+          </div>,
+          document.getElementById("modal-root")
+        )}
     </div>
   );
 }

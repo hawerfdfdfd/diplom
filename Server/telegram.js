@@ -19,6 +19,7 @@ const TELEGRAM_API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
  * @returns {Promise<void>}
  */
 async function sendTelegramMessage(chatId, text) {
+  console.log(`Попытка отправки сообщения в chat_id ${chatId}: ${text}`);
   if (!BOT_TOKEN) {
     console.error("sendTelegramMessage: TELEGRAM_BOT_TOKEN не задан.");
     return;
@@ -36,10 +37,11 @@ async function sendTelegramMessage(chatId, text) {
       text: text,
       parse_mode: "HTML", // при желании можно убрать или заменить на "Markdown"
     });
+    console.log("Сообщение успешно отправлено:", response.data);
   } catch (err) {
     // Логируем ошибку, но не бросаем её дальше, чтобы не ломать бизнес-логику
     console.error(
-      "Ошибка при отправке сообщения в Telegram:",
+      "Ошибка при отправке сообщения:",
       err.response?.data || err.message
     );
   }

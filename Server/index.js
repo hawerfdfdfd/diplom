@@ -1,6 +1,5 @@
 // в самом верху index.js
 require("dotenv").config();
-require("./telegram-handler");
 
 const axios = require("axios");
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -11,6 +10,7 @@ const mysql = require("mysql");
 const cors = require("cors");
 const path = require("path");
 const { sendTelegramMessage } = require("./telegram");
+const { startPolling } = require("./telegram-handler");
 const app = express();
 
 async function resolveChatId(usernameOrId) {
@@ -51,6 +51,10 @@ const db = mysql.createConnection({
   database: "store",
   multipleStatements: true,
 });
+console.log(
+  "Using BOT_TOKEN:",
+  process.env.TELEGRAM_BOT_TOKEN?.slice(0, 10) + "..."
+);
 
 app.get("/employees", (req, res) => {
   const sql = `
@@ -1322,6 +1326,15 @@ app.delete("/telegram-links/:employee_id", (req, res) => {
   });
 });
 
-app.listen(process.env.PORT || 3002, "127.0.0.1", () => {
+app.listen(process.env.PORT || 3002, "127.0.0.1", async () => {
   console.log("Server is working on 3002 port");
+
+  // Явный запуск поллинга
+  try {
+    const { startPolling } = require("./telegram-handler");
+    startPolling();
+    console.log("Telegram polling явно запущен");
+  } catch (e) {
+    console.error("Ошибка запуска Telegram polling:", e);
+  }
 });

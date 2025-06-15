@@ -16,8 +16,6 @@
   z-index: 20;
   transform: translateY(0);
   transition: transform 0.3s ease;
-  /* Добавляем отступ сверху, чтобы «Привязать Telegram» не перекрывал */
-  padding-top: 2.5rem;
 }
 .header-wrapper.scrolled {
   transform: translateY(-100%);
@@ -34,6 +32,55 @@
 }
 
 /* 3) «Привязать Telegram» */
+.telegram-form-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.telegram-form-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.telegram-form-card {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 5px 25px rgba(0, 0, 0, 0.5);
+  max-width: 500px;
+  width: 90%;
+  z-index: 10000;
+  transform: translateY(20px);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.telegram-form-overlay.active .telegram-form-card {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.telegram-form-overlay.closing {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.telegram-form-overlay.closing .telegram-form-card {
+  transform: translateY(20px);
+  opacity: 0;
+}
+
 .telegram-link-wrapper {
   position: absolute;
   top: 0.5rem;
@@ -172,10 +219,7 @@
 }
 
 /* 7) Медиа (≤960px): Поиск – 100% ширины, «Telegram» и иконки – внизу */
-@media (max-width: 960px) {
-  .header-wrapper {
-    padding-top: 3.5rem; /* увеличиваем, чтобы не перекрывался «Telegram» */
-  }
+@media (max-width: 999px) {
   .dashboard-header {
     flex-wrap: wrap;
     justify-content: center;
@@ -208,9 +252,6 @@
 
 /* 8) Медиа (≤480px): ещё более узкий */
 @media (max-width: 480px) {
-  .header-wrapper {
-    padding-top: 4.5rem;
-  }
   .dashboard-header {
     justify-content: center;
     gap: 0.25rem;
@@ -331,6 +372,7 @@
 .header-mail {
   display: flex;
   align-items: center;
+  padding: 2rem 0;
   gap: 1rem;
   justify-content: space-between;
   padding: 0 1rem;
@@ -465,4 +507,17 @@
   color: #fff;
   box-sizing: border-box;
   font-size: 1rem;
+}
+
+.li-telegram-modal {
+  padding-bottom: 10px;
+}
+
+.close-telegram-modalBtn {
+  background: #4caf50;
+  border: none;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
 }
